@@ -11,6 +11,8 @@
         "doctrine/doctrine-migrations-bundle": "^3.7",
         "doctrine/orm": "^3.5",
         "fakerphp/faker": "^1.24",
+        "gesdinet/jwt-refresh-token-bundle": "^1.5",
+        "lexik/jwt-authentication-bundle": "3.1.1",
         "symfony/console": "7.3.*",
         "symfony/dotenv": "7.3.*",
         "symfony/flex": "^2",
@@ -20,7 +22,8 @@
         "symfony/security-bundle": "7.3.*",
         "symfony/twig-bundle": "7.3.*",
         "symfony/validator": "7.3.*",
-        "symfony/yaml": "7.3.*"
+        "symfony/yaml": "7.3.*",
+        "web-token/jwt-bundle": "^4.1"
     },
     "require-dev": {
         "doctrine/doctrine-fixtures-bundle": "^4.3",
@@ -72,7 +75,7 @@
     },
     "extra": {
         "symfony": {
-            "allow-contrib": false,
+            "allow-contrib": true,
             "require": "7.3.*",
             "docker": true
         }

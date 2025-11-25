@@ -16,59 +16,65 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Route('/api/users')]
 final class UserController extends AbstractController
 {
-    #[Route('', methods: ['POST'])]
+    #[Route('/register', methods: ['POST'])]
     public function new(
         Request $request, 
         EntityManagerInterface $entityManager,
         ValidatorInterface $validator,
         UserPasswordHasherInterface $passwordHasher
     ): JsonResponse {
-        $data = json_decode($request->getContent(), true);
-        
-        // Vérifier que le JSON est valide
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return $this->json([
-                'error' => 'JSON invalide',
-                'message' => json_last_error_msg()
-            ], 400);
-        }
+        try {
+            $data = json_decode($request->getContent(), true);
 
-        $user = new User();
-        $user->setEmail($data['email'] ?? null);
-        $user->setUsername($data['username'] ?? null);
-        
-        // Validation AVANT le hashage du mot de passe
-        $plainPassword = $data['password'] ?? null;
-        $user->setPassword($plainPassword); // Temporairement pour la validation
-        
-        $errors = $validator->validate($user);
-        
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+            $user = new User();
+            $user->setEmail($data['email'] ?? null);
+            $user->setUsername($data['username'] ?? null);
+            
+            // Validation AVANT le hashage du mot de passe
+            $plainPassword = $data['password'] ?? null;
+            $user->setPassword($plainPassword); // Temporairement pour la validation
+            
+            $errors = $validator->validate($user);
+            
+            if (count($errors) > 0) {
+                $errorMessages = [];
+                foreach ($errors as $error) {
+                    $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+                }
+                
+                return $this->json([
+                    'message' => 'Validation échouée',
+                    'violations' => $errorMessages
+                ], 400);
             }
             
+            // Hash le mot de passe après validation
+            $hashedPassword = $passwordHasher->hashPassword($user, $plainPassword);
+            $user->setPassword($hashedPassword);
+            
+            $entityManager->persist($user);
+            $entityManager->flush();
+            
             return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], 400);
+                'message' => 'Utilisateur créé avec succès'
+            ], 201);
+        } catch (\Exception $e) {
+            return $this->json([
+                'message' => 'Erreur lors de la création de l\'utilisateur',
+                'error' => $e->getMessage()
+            ], 500);
         }
-        
-        // Hash le mot de passe après validation
-        $hashedPassword = $passwordHasher->hashPassword($user, $plainPassword);
-        $user->setPassword($hashedPassword);
-        
-        $entityManager->persist($user);
-        $entityManager->flush();
-        
+    }
+
+    #[Route('/login', methods: ['POST'])]
+    public function login(): JsonResponse
+    {
+        // Cette méthode ne sera jamais appelée car l'authentification est gérée par le firewall
+        // Elle sert uniquement de point d'entrée pour la route /api/users/login
+        // Le firewall 'login' dans security.yaml intercepte cette route et gère l'authentification
+        // En cas de succès, lexik_jwt_authentication.handler.authentication_success retourne le token
         return $this->json([
-            'message' => 'Utilisateur créé avec succès',
-            'user' => [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'username' => $user->getUsername(),
-            ]
-        ], 201);
+            'message' => 'Cette route est gérée par le firewall pour l\'authentification.'
+        ]);
     }
 }

@@ -53,53 +53,53 @@ class OrderController extends AbstractController
         ValidatorInterface $validator,
     ): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
-        
-        // Vérifier que le JSON est valide
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return $this->json([
-                'error' => 'JSON invalide',
-                'message' => json_last_error_msg()
-            ], 400);
-        }
-        
-        // Vérifier que $data est un tableau
-        if (!is_array($data)) {
-            return $this->json([
-                'error' => 'Le corps de la requête doit être un objet JSON'
-            ], 400);
-        }
-        
+        try {
+            $data = json_decode($request->getContent(), true);
+            $user = $userRepo->find($data['userId']);
 
-        $user = $userRepo->find($data['userId']);
-        if (!$user) {
-            return $this->json([
-                'error' => 'Utilisateur non trouvé',
-                'violations' => ['userId' => 'Aucun utilisateur trouvé avec l\'ID ' . $data['user_id']]
-            ], 404);
-        }
-
-        $order = new Order();
-        $order->setUser($user);
-
-        foreach ($data['products'] as $index => $productData) {
-            $product = $productRepo->find($productData['id']);
-
-            if (!$product) {
+            if (!$user) {
                 return $this->json([
-                    'error' => 'Produit non trouvé',
-                    'violations' => ["products[$index].id" => 'Aucun produit trouvé avec l\'ID ' . $productData['id']]
+                    'message' => 'Utilisateur non trouvé'
                 ], 404);
             }
 
-            $orderProduct = new OrderProduct();
-            $orderProduct->setOrder($order);
-            $orderProduct->setProduct($product);
-            $orderProduct->setQuantity((int)$productData['quantity']);
+            $order = new Order();
+            $order->setUser($user);
 
-            $order->addOrderProduct($orderProduct);
+            foreach ($data['products'] as $index => $productData) {
+                $product = $productRepo->find($productData['id']);
 
-            $errors = $validator->validate($orderProduct);
+                if (!$product) {
+                    return $this->json([
+                        'error' => 'Produit non trouvé'
+                    ], 404);
+                }
+
+                $orderProduct = new OrderProduct();
+                $orderProduct->setOrder($order);
+                $orderProduct->setProduct($product);
+                $orderProduct->setQuantity((int)$productData['quantity']);
+
+                $order->addOrderProduct($orderProduct);
+
+                $errors = $validator->validate($orderProduct);
+
+                if (count($errors) > 0) {
+                    $errorMessages = [];
+                    foreach ($errors as $error) {
+                        $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+                    }
+
+                    return $this->json([
+                        'error' => 'Validation échouée',
+                        'violations' => $errorMessages
+                    ], 400);
+                }
+
+                $em->persist($orderProduct);
+            }
+            
+            $errors = $validator->validate($order);
 
             if (count($errors) > 0) {
                 $errorMessages = [];
@@ -113,42 +113,16 @@ class OrderController extends AbstractController
                 ], 400);
             }
 
-            $em->persist($orderProduct);
-        }
-        
-        $errors = $validator->validate($order);
-
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
+            $em->persist($order);
+            $em->flush();
 
             return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], 400);
+                'message' => 'Commande créée avec succès',
+                'orderId' => $order->getId()
+            ], 201);
+        } catch (\Exception $e) {
+            return $this->json(['message' => 'Erreur lors de la création de la commande', 'error' => $e->getMessage()], 500);
         }
-
-        $em->persist($order);
-        $em->flush();
-
-        return $this->json([
-            'id' => $order->getId(),
-            'user' => [
-                'id' => $order->getUser()->getId(),
-                'email' => $order->getUser()->getEmail(),
-            ],
-            'status' => $order->getStatus(),
-            'products' => array_map(function($orderProduct) {
-                return [
-                    'id' => $orderProduct->getProduct()->getId(),
-                    'name' => $orderProduct->getProduct()->getName(),
-                    'price' => $orderProduct->getProduct()->getPrice(),
-                    'quantity' => $orderProduct->getQuantity(),
-                ];
-            }, $order->getOrderProducts()->toArray()),
-        ], 201);
     }
 
     #[Route('/{id}', methods: ['GET'])]
