@@ -14,10 +14,16 @@ use App\Entity\OrderProduct;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
+use Symfony\Component\Security\Http\Attribute\IsGranted;
+
+use App\Security\Voter\OrderVoter;
+
 #[Route('/api/orders')]
+#[IsGranted('IS_AUTHENTICATED_FULLY')]
 class OrderController extends AbstractController
 {
     #[Route('', methods: ['GET'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function list(OrderRepository $repo): JsonResponse
     {
         $orders = $repo->findAll();
@@ -126,6 +132,7 @@ class OrderController extends AbstractController
     }
 
     #[Route('/{id}', methods: ['GET'])]
+    #[IsGranted('ORDER_VIEW', subject: 'order')]
     public function show(Order $order): JsonResponse
     {
         return $this->json([

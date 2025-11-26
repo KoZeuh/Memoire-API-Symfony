@@ -16,6 +16,8 @@ use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 #[UniqueEntity('username', message: 'Username déjà utilisé')]
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
+    const ROLES = ['Utilisateur', 'Administrateur', 'Super Administrateur'];
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -30,11 +32,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[Assert\Email(message: "L'email {{ value }} n'est pas valide")]
     private ?string $email = null;
 
-    /**
-     * @var list<string> The user roles
-     */
     #[ORM\Column]
-    private array $roles = [];
+    #[Assert\NotBlank(message: "Champ obligatoire")]
+    private string $role = 'Utilisateur';
 
     /**
      * @var string The hashed password
@@ -97,19 +97,31 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      */
     public function getRoles(): array
     {
-        $roles = $this->roles;
-        // guarantee every user at least has ROLE_USER
-        $roles[] = 'ROLE_USER';
+        $roles = array();
+
+        if ($this->role == 'Utilisateur') {
+            $roles[] = 'ROLE_USER';
+        } else if ($this->role == 'Administrateur') {
+            $roles[] = 'ROLE_ADMIN';
+            $roles[] = 'ROLE_USER';
+        } else if ($this->role == 'Super administrateur') {
+            $roles[] = 'ROLE_SUPER_ADMIN';
+            $roles[] = 'ROLE_ALLOWED_TO_SWITCH';
+            $roles[] = 'ROLE_ADMIN';
+            $roles[] = 'ROLE_USER';
+        }
 
         return array_unique($roles);
     }
 
-    /**
-     * @param list<string> $roles
-     */
-    public function setRoles(array $roles): static
+    public function getRole(): ?string
     {
-        $this->roles = $roles;
+        return $this->role;
+    }
+
+    public function setRole(string $role): static
+    {
+        $this->role = $role;
 
         return $this;
     }

@@ -29,6 +29,7 @@ final class UserController extends AbstractController
             $user = new User();
             $user->setEmail($data['email'] ?? null);
             $user->setUsername($data['username'] ?? null);
+            $user->setRole('Utilisateur');
             
             // Validation AVANT le hashage du mot de passe
             $plainPassword = $data['password'] ?? null;
