@@ -1,24 +1,26 @@
-Voici un projet fraichement initié, voici la liste des commandes entrée dans le terminal pour le créer :
+Afin de créer une entité Product, voici les étapes à suivre dans un projet Symfony :
 
 ```bash
-# Créer un nouveau répertoire pour le projet
-symfony new my_project
-cd my_project
+# Créer l'entité Product avec les champs souhaités
+php bin/console make:entity Product
 
-# Vérifier les informations sur le projet Symfony
-php bin/console about
+# Ajouter les champs à l'entité
+# Par exemple :
+# name (string)
+# description (text)
+# price (float)
 
-# Installer les dépendances nécessaires via Composer
-composer require symfony/maker-bundle --dev
-composer require symfony/orm-pack
+# Mettre à jour la base de données avec la nouvelle entité
+php bin/console make:migration
+php bin/console doctrine:migrations:migrate
 
-# Il est important de configurer la base de données dans le fichier .env
-# Exemple de configuration pour une base de données MySQL
-# DATABASE_URL="mysql://db_user:db_password@db_host:db_port/db_name"
+# Ajouter la dépendance Faker pour générer des données factices
+composer require fakerphp/faker --dev
+composer require orm-fixtures --dev
 
-# Créer la base de données
-php bin/console doctrine:database:create
+# Créer un fixture pour l'entité Product
+php bin/console make:fixture ProductFixture
 
-# Lancer le serveur de développement Symfony
-symfony server:start
+# Exécuter les fixtures pour remplir la base de données avec des données factices
+php bin/console doctrine:fixtures:load
 ```
