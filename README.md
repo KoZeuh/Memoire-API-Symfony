@@ -1,26 +1,39 @@
-Afin de créer une entité Product, voici les étapes à suivre dans un projet Symfony :
-
+Voici la liste des commandes afin de créer les entités pour l'exercice final de la partie 1 
 ```bash
-# Créer l'entité Product avec les champs souhaités
-php bin/console make:entity Product
+composer require symfony/security-bundle
+php bin/console make:user
+ - User
+ - yes
+ - email
+ - yes
 
-# Ajouter les champs à l'entité
-# Par exemple :
-# name (string)
-# description (text)
-# price (float)
+php bin/console make:entity Order
+  - user (ManyToOne -> User)
+  - status (string)
 
-# Mettre à jour la base de données avec la nouvelle entité
+php bin/console make:orderProduct
+  - order (ManyToOne -> Order)
+  - product (ManyToOne -> Product)
+  - quantity (integer)
+
 php bin/console make:migration
 php bin/console doctrine:migrations:migrate
+```
 
-# Ajouter la dépendance Faker pour générer des données factices
-composer require fakerphp/faker --dev
-composer require orm-fixtures --dev
+On va ensuite créer les controller : 
+```bash
+php bin/console make:controller OrderController
+php bin/console make:controller OrderProductController
+php bin/console make:controller UserController
+``` 
 
-# Créer un fixture pour l'entité Product
-php bin/console make:fixture ProductFixture
-
-# Exécuter les fixtures pour remplir la base de données avec des données factices
+Et ensuite les fixtures pour ces entités : 
+```bash
+php bin/console make:fixtures OrderFixtures
+php bin/console make:fixtures OrderProductFixtures
+php bin/console make:fixtures UserFixtures
+```
+N'oubliez pas de lancer les fixtures après les avoir créées : 
+```bash
 php bin/console doctrine:fixtures:load
 ```
