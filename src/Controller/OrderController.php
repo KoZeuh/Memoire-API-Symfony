@@ -47,10 +47,8 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(int $id, OrderRepository $orderRepository): JsonResponse
+    public function show(Order $order): JsonResponse
     {
-        $order = $orderRepository->find($id);
-
         if (!$order) {
             return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
         }

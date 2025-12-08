@@ -33,10 +33,8 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(int $id, ProductRepository $productRepository): JsonResponse
+    public function show(Product $product): JsonResponse
     {
-        $product = $productRepository->find($id);
-
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
         }
