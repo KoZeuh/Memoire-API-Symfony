@@ -55,10 +55,8 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(int $id, OrderRepository $orderRepository): JsonResponse
+    public function show(Order $order): JsonResponse
     {
-        $order = $orderRepository->find($id);
-
         if (!$order) {
             return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
         }
@@ -134,7 +132,7 @@ final class OrderController extends AbstractController
 
                 $entityManager->persist($orderProduct);
             }
-            
+
             $errors = $validator->validate($order);
 
             if (count($errors) > 0) {
@@ -162,10 +160,8 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(int $id, Request $request, OrderRepository $orderRepository, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
+    public function update(Order $order, Request $request, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
     {
-        $order = $orderRepository->find($id);
-
         if (!$order) {
             return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
         }
@@ -189,10 +185,8 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    public function delete(int $id, OrderRepository $orderRepository, EntityManagerInterface $entityManager): JsonResponse
+    public function delete(Order $order, EntityManagerInterface $entityManager): JsonResponse
     {
-        $order = $orderRepository->find($id);
-
         if (!$order) {
             return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
         }

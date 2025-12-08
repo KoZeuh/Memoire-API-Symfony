@@ -35,10 +35,8 @@ final class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(int $id, UserRepository $userRepository): JsonResponse
+    public function show(User $user): JsonResponse
     {
-        $user = $userRepository->find($id);
-
         if (!$user) {
             return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
         }
@@ -60,32 +58,32 @@ final class UserController extends AbstractController
 
             $user = new User();
             $user->setEmail($data['email'] ?? null);
-            
+
             // Validation AVANT le hashage du mot de passe
             $plainPassword = $data['password'] ?? null;
             $user->setPassword($plainPassword); // Temporairement pour la validation
-            
+
             $errors = $validator->validate($user);
-            
+
             if (count($errors) > 0) {
                 $errorMessages = [];
                 foreach ($errors as $error) {
                     $errorMessages[$error->getPropertyPath()] = $error->getMessage();
                 }
-                
+
                 return $this->json([
                     'message' => 'Validation échouée',
                     'violations' => $errorMessages
                 ], Response::HTTP_BAD_REQUEST);
             }
-            
+
             // Hash le mot de passe après validation
             $hashedPassword = $passwordHasher->hashPassword($user, $plainPassword);
             $user->setPassword($hashedPassword);
-            
+
             $entityManager->persist($user);
             $entityManager->flush();
-            
+
             return $this->json([
                 'message' => 'Utilisateur créé avec succès'
             ], Response::HTTP_CREATED);
@@ -98,10 +96,8 @@ final class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(int $id, Request $request, UserRepository $userRepository, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher): JsonResponse
+    public function update(User $user, Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher): JsonResponse
     {
-        $user = $userRepository->find($id);
-
         if (!$user) {
             return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
         }
@@ -125,10 +121,8 @@ final class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    public function delete(int $id, UserRepository $userRepository, EntityManagerInterface $entityManager): JsonResponse
+    public function delete(User $user, EntityManagerInterface $entityManager): JsonResponse
     {
-        $user = $userRepository->find($id);
-
         if (!$user) {
             return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
         }
