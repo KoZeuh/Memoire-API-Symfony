@@ -3,14 +3,22 @@
 namespace App\Controller;
 
 use App\Entity\Order;
+use App\Entity\OrderProduct;
+
 use App\Repository\OrderRepository;
 use App\Repository\UserRepository;
+use App\Repository\ProductRepository;
+
 use Doctrine\ORM\EntityManagerInterface;
+
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpFoundation\JsonResponse;
+
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/order', name: 'app_order_')]
 final class OrderController extends AbstractController
@@ -79,30 +87,78 @@ final class OrderController extends AbstractController
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
+    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository, ProductRepository $productRepository): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        try {
+            $data = json_decode($request->getContent(), true);
+            $user = $userRepository->find($data['userId']);
 
-        if (!isset($data['user_id']) || !isset($data['status'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
+            if (!$user) {
+                return $this->json([
+                    'message' => 'Utilisateur non trouvé'
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            $order = new Order();
+            $order->setUser($user);
+
+            foreach ($data['products'] as $index => $productData) {
+                $product = $productRepository->find($productData['id']);
+
+                if (!$product) {
+                    return $this->json([
+                        'error' => 'Produit non trouvé'
+                    ], Response::HTTP_NOT_FOUND);
+                }
+
+                $orderProduct = new OrderProduct();
+                $orderProduct->setOrders($order);
+                $orderProduct->setProduct($product);
+                $orderProduct->setQuantity((int)$productData['quantity']);
+
+                $order->addOrderProduct($orderProduct);
+
+                $errors = $validator->validate($orderProduct);
+
+                if (count($errors) > 0) {
+                    $errorMessages = [];
+                    foreach ($errors as $error) {
+                        $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+                    }
+
+                    return $this->json([
+                        'error' => 'Validation échouée',
+                        'violations' => $errorMessages
+                    ], Response::HTTP_BAD_REQUEST);
+                }
+
+                $entityManager->persist($orderProduct);
+            }
+            
+            $errors = $validator->validate($order);
+
+            if (count($errors) > 0) {
+                $errorMessages = [];
+                foreach ($errors as $error) {
+                    $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+                }
+
+                return $this->json([
+                    'error' => 'Validation échouée',
+                    'violations' => $errorMessages
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            $entityManager->persist($order);
+            $entityManager->flush();
+
+            return $this->json([
+                'message' => 'Commande créée avec succès',
+                'orderId' => $order->getId()
+            ], Response::HTTP_CREATED);
+        } catch (\Exception $e) {
+            return $this->json(['message' => 'Erreur lors de la création de la commande', 'error' => $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        $user = $userRepository->find($data['user_id']);
-        if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
-        }
-
-        $order = new Order();
-        $order->setUser($user);
-        $order->setStatus($data['status']);
-
-        $entityManager->persist($order);
-        $entityManager->flush();
-
-        return $this->json([
-            'message' => 'Order created successfully',
-            'id' => $order->getId()
-        ], Response::HTTP_CREATED);
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]

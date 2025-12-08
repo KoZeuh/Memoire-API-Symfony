@@ -12,6 +12,8 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+
 #[Route('/user', name: 'app_user_')]
 final class UserController extends AbstractController
 {
@@ -50,29 +52,49 @@ final class UserController extends AbstractController
         return $this->json($data);
     }
 
-    #[Route('', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher): JsonResponse
+    #[Route('/register', name: 'create', methods: ['POST'])]
+    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserPasswordHasherInterface $passwordHasher): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        try {
+            $data = json_decode($request->getContent(), true);
 
-        if (!isset($data['email']) || !isset($data['password'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
+            $user = new User();
+            $user->setEmail($data['email'] ?? null);
+            
+            // Validation AVANT le hashage du mot de passe
+            $plainPassword = $data['password'] ?? null;
+            $user->setPassword($plainPassword); // Temporairement pour la validation
+            
+            $errors = $validator->validate($user);
+            
+            if (count($errors) > 0) {
+                $errorMessages = [];
+                foreach ($errors as $error) {
+                    $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+                }
+                
+                return $this->json([
+                    'message' => 'Validation échouée',
+                    'violations' => $errorMessages
+                ], Response::HTTP_BAD_REQUEST);
+            }
+            
+            // Hash le mot de passe après validation
+            $hashedPassword = $passwordHasher->hashPassword($user, $plainPassword);
+            $user->setPassword($hashedPassword);
+            
+            $entityManager->persist($user);
+            $entityManager->flush();
+            
+            return $this->json([
+                'message' => 'Utilisateur créé avec succès'
+            ], Response::HTTP_CREATED);
+        } catch (\Exception $e) {
+            return $this->json([
+                'message' => 'Erreur lors de la création de l\'utilisateur',
+                'error' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        $user = new User();
-        $user->setEmail($data['email']);
-        $user->setRoles($data['roles'] ?? ['ROLE_USER']);
-
-        $hashedPassword = $passwordHasher->hashPassword($user, $data['password']);
-        $user->setPassword($hashedPassword);
-
-        $entityManager->persist($user);
-        $entityManager->flush();
-
-        return $this->json([
-            'message' => 'User created successfully',
-            'id' => $user->getId()
-        ], Response::HTTP_CREATED);
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
