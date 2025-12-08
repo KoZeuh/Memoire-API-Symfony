@@ -417,7 +417,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 ```
 
-Etape 4 - Tester la validation
+Etape 4 (Tester la validation) :
 
 Test 1 - Email invalide :
 ```
