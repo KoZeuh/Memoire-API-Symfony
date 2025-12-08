@@ -52,6 +52,18 @@ final class UserController extends AbstractController
         return $this->json($data);
     }
 
+    #[Route('/login', methods: ['POST'])]
+    public function login(): JsonResponse
+        {
+        // Cette méthode ne sera jamais appelée car l'authentification est gérée par le firewall
+        // Elle sert uniquement de point d'entrée pour la route /user/login
+        // Le firewall 'login' dans security.yaml intercepte cette route et gère l'authentification
+        // En cas de succès, lexik_jwt_authentication.handler.authentication_success retourne le token
+        return $this->json([
+            'message' => 'Cette route est gérée par le firewall pour l\'authentification.'
+        ]);
+    }
+
     #[Route('/register', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserPasswordHasherInterface $passwordHasher): JsonResponse
     {
