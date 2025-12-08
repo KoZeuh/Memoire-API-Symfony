@@ -193,10 +193,6 @@ final class ProductController extends AbstractController
     #[IsGranted('PRODUCT_DELETE', subject: 'product')]
     public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
     {
-        if (!$this->isGranted('ROLE_ADMIN')) {
-            return $this->json(['error' => 'Accès refusé'], 403);
-        }
-
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
         }
