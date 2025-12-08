@@ -95,6 +95,25 @@ gesdinet_jwt_refresh_token:
 
 ```
 
+```yml
+# config/routes.yaml
+
+controllers:
+    resource: routing.controllers
+
+api_refresh_token:
+    path: /token/refresh
+
+```
+
+```yml
+# config/packages/gesdinet_jwt_refresh_token.yaml
+
+gesdinet_jwt_refresh_token:
+    refresh_token_class: App\Entity\RefreshToken
+
+```
+
 ```php
 
 // src/Controller/UserController.php
@@ -111,6 +130,23 @@ public function login(): JsonResponse
     ]);
 }
 
+```
+
+```php
+// src/Entity/RefreshToken.php
+
+<?php
+
+namespace App\Entity;
+
+use Doctrine\ORM\Mapping as ORM;
+use Gesdinet\JWTRefreshTokenBundle\Entity\RefreshToken as BaseRefreshToken;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'refresh_tokens')]
+class RefreshToken extends BaseRefreshToken
+{
+}
 ```
 
 Etape 4 - Tester la validation
@@ -162,6 +198,9 @@ Résultat :
 Test 4 - Renouvellement du token :
 ```
 POST /token/refresh
+{
+    "refresh_token": "2161407de......"
+}
 ```
 ```
 Résultat :
