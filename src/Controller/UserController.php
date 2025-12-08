@@ -74,10 +74,8 @@ final class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(int $id, Request $request, UserRepository $userRepository, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher): JsonResponse
+    public function update(User $user, Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher): JsonResponse
     {
-        $user = $userRepository->find($id);
-
         if (!$user) {
             return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
         }
@@ -101,10 +99,8 @@ final class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    public function delete(int $id, UserRepository $userRepository, EntityManagerInterface $entityManager): JsonResponse
+    public function delete(User $user, EntityManagerInterface $entityManager): JsonResponse
     {
-        $user = $userRepository->find($id);
-
         if (!$user) {
             return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
         }

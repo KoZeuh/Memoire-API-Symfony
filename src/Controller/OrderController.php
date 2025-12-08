@@ -104,10 +104,8 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(int $id, Request $request, OrderRepository $orderRepository, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
+    public function update(Order $order, Request $request, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
     {
-        $order = $orderRepository->find($id);
-
         if (!$order) {
             return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
         }
@@ -131,10 +129,8 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    public function delete(int $id, OrderRepository $orderRepository, EntityManagerInterface $entityManager): JsonResponse
+    public function delete(Order $order, OrderRepository $orderRepository, EntityManagerInterface $entityManager): JsonResponse
     {
-        $order = $orderRepository->find($id);
-
         if (!$order) {
             return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
         }

@@ -99,10 +99,8 @@ final class OrderProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(int $id, Request $request, OrderProductRepository $orderProductRepository, EntityManagerInterface $entityManager, OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
+    public function update(OrderProduct $orderProduct, Request $request, EntityManagerInterface $entityManager, OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
     {
-        $orderProduct = $orderProductRepository->find($id);
-
         if (!$orderProduct) {
             return $this->json(['error' => 'OrderProduct not found'], Response::HTTP_NOT_FOUND);
         }
@@ -133,10 +131,8 @@ final class OrderProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    public function delete(int $id, OrderProductRepository $orderProductRepository, EntityManagerInterface $entityManager): JsonResponse
+    public function delete(OrderProduct $orderProduct, EntityManagerInterface $entityManager): JsonResponse
     {
-        $orderProduct = $orderProductRepository->find($id);
-
         if (!$orderProduct) {
             return $this->json(['error' => 'OrderProduct not found'], Response::HTTP_NOT_FOUND);
         }
