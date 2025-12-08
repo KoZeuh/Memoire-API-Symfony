@@ -149,7 +149,7 @@ class RefreshToken extends BaseRefreshToken
 }
 ```
 
-Etape 4 - Tester la validation
+Etape 4 (Tester la mise en place) :
 
 Test 1 - Connexion :
 ```
