@@ -11,10 +11,15 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 
+use Symfony\Component\Security\Http\Attribute\IsGranted;
+use App\Security\Voter\ProductVoter;
+
 #[Route('/product', name: 'app_product_')]
+#[IsGranted('IS_AUTHENTICATED_FULLY')]
 final class ProductController extends AbstractController
 {
     #[Route('/', name: 'list', methods: ['GET'])]
+    #[IsGranted('IS_AUTHENTICATED_FULLY')]
     public function list(ProductRepository $productRepository): JsonResponse
     {
         $products = $productRepository->findAll();
@@ -33,10 +38,8 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(int $id, ProductRepository $productRepository): JsonResponse
+    public function show(Product $product): JsonResponse
     {
-        $product = $productRepository->find($id);
-
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
         }
@@ -52,6 +55,7 @@ final class ProductController extends AbstractController
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
+    #[IsGranted('PRODUCT_CREATE', subject: 'product')]
     public function create(Request $request, EntityManagerInterface $entityManager): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
@@ -75,10 +79,9 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(int $id, Request $request, ProductRepository $productRepository, EntityManagerInterface $entityManager): JsonResponse
+    #[IsGranted('PRODUCT_EDIT', subject: 'product')]
+    public function update(Product $product, Request $request, EntityManagerInterface $entityManager): JsonResponse
     {
-        $product = $productRepository->find($id);
-
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
         }
@@ -101,9 +104,12 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    public function delete(int $id, ProductRepository $productRepository, EntityManagerInterface $entityManager): JsonResponse
+    #[IsGranted('PRODUCT_DELETE', subject: 'product')]
+    public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
     {
-        $product = $productRepository->find($id);
+        if (!$this->isGranted('ROLE_ADMIN')) {
+            return $this->json(['error' => 'Accès refusé'], 403);
+        }
 
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
