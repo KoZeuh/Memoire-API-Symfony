@@ -33,10 +33,8 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(int $id, ProductRepository $productRepository): JsonResponse
+    public function show(Product $product): JsonResponse
     {
-        $product = $productRepository->find($id);
-
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
         }
@@ -75,10 +73,8 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(int $id, Request $request, ProductRepository $productRepository, EntityManagerInterface $entityManager): JsonResponse
+    public function update(Product $product, Request $request, EntityManagerInterface $entityManager): JsonResponse
     {
-        $product = $productRepository->find($id);
-
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
         }
@@ -101,10 +97,8 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    public function delete(int $id, ProductRepository $productRepository, EntityManagerInterface $entityManager): JsonResponse
+    public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
     {
-        $product = $productRepository->find($id);
-
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
         }
