@@ -51,14 +51,14 @@ final class OrderController extends AbstractController
             ];
         };
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(Order $order): JsonResponse
     {
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
         $data = [
@@ -81,32 +81,28 @@ final class OrderController extends AbstractController
             }, $order->getOrderProducts()->toArray()),
         ];
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository, ProductRepository $productRepository): JsonResponse
     {
         try {
-            $data = json_decode($request->getContent(), true);
-            $user = $userRepository->find($data['userId']);
+            $payload = $request->getPayload();
+            $user = $userRepository->find($payload->get('userId'));
 
             if (!$user) {
-                return $this->json([
-                    'message' => 'Utilisateur non trouvé'
-                ], Response::HTTP_NOT_FOUND);
+                return $this->json(['message' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
             }
 
             $order = new Order();
             $order->setUser($user);
 
-            foreach ($data['products'] as $index => $productData) {
+            foreach ($payload->all()['products'] as $index => $productData) {
                 $product = $productRepository->find($productData['id']);
 
                 if (!$product) {
-                    return $this->json([
-                        'error' => 'Produit non trouvé'
-                    ], Response::HTTP_NOT_FOUND);
+                    return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
                 }
 
                 $orderProduct = new OrderProduct();
@@ -132,7 +128,7 @@ final class OrderController extends AbstractController
 
                 $entityManager->persist($orderProduct);
             }
-            
+
             $errors = $validator->validate($order);
 
             if (count($errors) > 0) {
@@ -143,8 +139,8 @@ final class OrderController extends AbstractController
 
                 return $this->json([
                     'error' => 'Validation échouée',
-                    'violations' => $errorMessages
-                ], Response::HTTP_BAD_REQUEST);
+                    'violations' => $errorMessages], 
+                Response::HTTP_BAD_REQUEST);
             }
 
             $entityManager->persist($order);
@@ -155,7 +151,10 @@ final class OrderController extends AbstractController
                 'orderId' => $order->getId()
             ], Response::HTTP_CREATED);
         } catch (\Exception $e) {
-            return $this->json(['message' => 'Erreur lors de la création de la commande', 'error' => $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->json([
+                'message' => 'Erreur lors de la création de la commande', 
+                'error' => $e->getMessage()], 
+            Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -163,20 +162,22 @@ final class OrderController extends AbstractController
     public function update(Order $order, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository): JsonResponse
     {
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['user_id'])) {
-            $user = $userRepository->find($data['user_id']);
+        if ($payload->has('user_id')) {
+            $user = $userRepository->find($payload->get('user_id'));
+
             if (!$user) {
-                return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+                return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
             }
+
             $order->setUser($user);
         }
-        if (isset($data['status'])) {
-            $order->setStatus($data['status']);
+        if ($payload->has('status')) {
+            $order->setStatus($payload->getString('status'));
         }
 
         $errors = $validator->validate($order);
@@ -195,19 +196,19 @@ final class OrderController extends AbstractController
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'Order updated successfully']);
+        return $this->json(['message' => 'Commande mise à jour avec succès'], Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
     public function delete(Order $order, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
         $entityManager->remove($order);
         $entityManager->flush();
 
-        return $this->json(['message' => 'Order deleted successfully'], Response::HTTP_OK);
+        return $this->json(['message' => 'Commande supprimée avec succès'], Response::HTTP_OK);
     }
 }

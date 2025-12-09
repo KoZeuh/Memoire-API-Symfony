@@ -31,14 +31,14 @@ final class UserController extends AbstractController
             ];
         };
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(User $user): JsonResponse
     {
         if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $data = [
@@ -47,7 +47,7 @@ final class UserController extends AbstractController
             'roles' => $user->getRoles(),
         ];
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('/login', methods: ['POST'])]
@@ -66,40 +66,37 @@ final class UserController extends AbstractController
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserPasswordHasherInterface $passwordHasher): JsonResponse
     {
         try {
-            $data = json_decode($request->getContent(), true);
+            $payload = $request->getPayload();
 
             $user = new User();
-            $user->setEmail($data['email'] ?? null);
-            $user->setRole('Utilisateur');
-            
+            $user->setEmail($payload->get('email'));
+
             // Validation AVANT le hashage du mot de passe
-            $plainPassword = $data['password'] ?? null;
+            $plainPassword = $payload->get('password');
             $user->setPassword($plainPassword); // Temporairement pour la validation
-            
+
             $errors = $validator->validate($user);
-            
+
             if (count($errors) > 0) {
                 $errorMessages = [];
                 foreach ($errors as $error) {
                     $errorMessages[$error->getPropertyPath()] = $error->getMessage();
                 }
-                
+
                 return $this->json([
                     'message' => 'Validation échouée',
                     'violations' => $errorMessages
                 ], Response::HTTP_BAD_REQUEST);
             }
-            
+
             // Hash le mot de passe après validation
             $hashedPassword = $passwordHasher->hashPassword($user, $plainPassword);
             $user->setPassword($hashedPassword);
-            
+
             $entityManager->persist($user);
             $entityManager->flush();
-            
-            return $this->json([
-                'message' => 'Utilisateur créé avec succès'
-            ], Response::HTTP_CREATED);
+
+            return $this->json(['message' => 'Utilisateur créé avec succès'], Response::HTTP_CREATED);
         } catch (\Exception $e) {
             return $this->json([
                 'message' => 'Erreur lors de la création de l\'utilisateur',
@@ -112,19 +109,19 @@ final class UserController extends AbstractController
     public function update(User $user, Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher, ValidatorInterface $validator): JsonResponse
     {
         if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['email'])) {
-            $user->setEmail($data['email']);
+        if ($payload->has('email')) {
+            $user->setEmail($payload->getString('email'));
         }
-        if (isset($data['role'])) {
-            $user->setRole($data['role']);
+        if ($payload->has('roles')) {
+            $user->setRoles($payload->get('roles'));
         }
-        if (isset($data['password'])) {
-            $hashedPassword = $passwordHasher->hashPassword($user, $data['password']);
+        if ($payload->has('password')) {
+            $hashedPassword = $passwordHasher->hashPassword($user, $payload->getString('password'));
             $user->setPassword($hashedPassword);
         }
 
@@ -144,19 +141,19 @@ final class UserController extends AbstractController
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'User updated successfully']);
+        return $this->json(['message' => 'Utilisateur mis à jour avec succès'], Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
     public function delete(User $user, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $entityManager->remove($user);
         $entityManager->flush();
 
-        return $this->json(['message' => 'User deleted successfully'], Response::HTTP_OK);
+        return $this->json(['message' => 'Utilisateur supprimé avec succès'], Response::HTTP_OK);
     }
 }

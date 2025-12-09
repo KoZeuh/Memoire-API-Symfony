@@ -82,6 +82,8 @@ Etape 3 (Implémenter le voter dans le contrôleur) :
 ```php
 //  src/Controller/ProductController.php
 
+<?php
+
 namespace App\Controller;
 
 use App\Entity\Product;
@@ -118,14 +120,14 @@ final class ProductController extends AbstractController
             ];
         };
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(Product $product): JsonResponse
     {
         if (!$product) {
-            return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $data = [
@@ -135,24 +137,20 @@ final class ProductController extends AbstractController
             'price' => $product->getPrice(),
         ];
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
     #[IsGranted('PRODUCT_CREATE', subject: 'product')]
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
-
-        if (!isset($data['name']) || !isset($data['price'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
-        }
+        $payload = $request->getPayload();
 
         $product = new Product();
-        $product->setName($data['name'] ?? null);
-        $product->setDescription($data['description'] ?? null);
-        $product->setPrice($data['price'] ?? null);
-        $product->setCode($data['code'] ?? null);
+        $product->setName($payload->get('name'));
+        $product->setDescription($payload->get('description'));
+        $product->setPrice($payload->get('price'));
+        $product->setCode($payload->get('code'));
 
         $errors = $validator->validate($product);
 
@@ -172,7 +170,7 @@ final class ProductController extends AbstractController
         $entityManager->flush();
 
         return $this->json([
-            'message' => 'Product created successfully',
+            'message' => 'Produit créé avec succès',
             'id' => $product->getId()
         ], Response::HTTP_CREATED);
     }
@@ -182,22 +180,22 @@ final class ProductController extends AbstractController
     public function update(Product $product, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
         if (!$product) {
-            return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['name'])) {
-            $product->setName($data['name']);
+        if ($payload->has('name')) {
+            $product->setName($payload->getString('name'));
         }
-        if (isset($data['description'])) {
-            $product->setDescription($data['description']);
+        if ($payload->has('description')) {
+            $product->setDescription($payload->getString('description'));
         }
-        if (isset($data['price'])) {
-            $product->setPrice($data['price']);
+        if ($payload->has('price')) {
+            $product->setPrice($payload->get('price'));
         }
-        if (isset($data['code'])) {
-            $product->setCode($data['code']);
+        if ($payload->has('code')) {
+            $product->setCode($payload->getString('code'));
         }
 
         $errors = $validator->validate($product);
@@ -216,7 +214,7 @@ final class ProductController extends AbstractController
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'Product updated successfully']);
+        return $this->json(['message' => 'Produit mis à jour avec succès'], Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
@@ -224,15 +222,16 @@ final class ProductController extends AbstractController
     public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$product) {
-            return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $entityManager->remove($product);
         $entityManager->flush();
 
-        return $this->json(['message' => 'Product deleted successfully'], Response::HTTP_OK);
+        return $this->json(['message' => 'Produit supprimé avec succès'], Response::HTTP_OK);
     }
 }
+
 
 ```
 

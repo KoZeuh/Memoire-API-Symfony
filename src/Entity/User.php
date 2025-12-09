@@ -27,8 +27,11 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[Assert\Email(message: "L'email {{ value }} n'est pas valide")]
     private ?string $email = null;
 
-    #[ORM\Column]#[Assert\NotBlank(message: "Champ obligatoire")]
-    private string $role = 'Utilisateur';
+    /**
+     * @var list<string> The user roles
+     */
+    #[ORM\Column]
+    private array $roles = [];
 
     #[ORM\Column]
     #[Assert\NotBlank(message: "Le mot de passe est obligatoire")]
@@ -73,33 +76,24 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return (string) $this->email;
     }
 
+    /**
+     * @see UserInterface
+     */
     public function getRoles(): array
     {
-        $roles = array();
-
-        if ($this->role == 'Utilisateur') {
-            $roles[] = 'ROLE_USER';
-        } else if ($this->role == 'Administrateur') {
-            $roles[] = 'ROLE_ADMIN';
-            $roles[] = 'ROLE_USER';
-        } else if ($this->role == 'Super administrateur') {
-            $roles[] = 'ROLE_SUPER_ADMIN';
-            $roles[] = 'ROLE_ALLOWED_TO_SWITCH';
-            $roles[] = 'ROLE_ADMIN';
-            $roles[] = 'ROLE_USER';
-        }
+        $roles = $this->roles;
+        // guarantee every user at least has ROLE_USER
+        $roles[] = 'ROLE_USER';
 
         return array_unique($roles);
     }
 
-    public function getRole(): ?string
+    /**
+     * @param list<string> $roles
+     */
+    public function setRoles(array $roles): static
     {
-        return $this->role;
-    }
-
-    public function setRole(string $role): static
-    {
-        $this->role = $role;
+        $this->roles = $roles;
 
         return $this;
     }

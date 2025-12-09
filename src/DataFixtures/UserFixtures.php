@@ -20,7 +20,7 @@ class UserFixtures extends Fixture
         for ($i = 0; $i < 10; $i++) {
             $user = new User();
             $user->setEmail($faker->email());
-            $user->setRole('Utilisateur');
+            $user->setRoles(['ROLE_USER']);
             $user->setPassword($this->passwordHasher->hashPassword($user, 'password123'));
 
             $manager->persist($user);
