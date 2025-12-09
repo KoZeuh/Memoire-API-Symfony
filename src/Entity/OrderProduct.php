@@ -5,6 +5,8 @@ namespace App\Entity;
 use App\Repository\OrderProductRepository;
 use Doctrine\ORM\Mapping as ORM;
 
+use Symfony\Component\Validator\Constraints as Assert;
+
 #[ORM\Entity(repositoryClass: OrderProductRepository::class)]
 class OrderProduct
 {
@@ -14,12 +16,16 @@ class OrderProduct
     private ?int $id = null;
 
     #[ORM\ManyToOne(inversedBy: 'orderProducts')]
+    #[Assert\NotNull(message: "Une commande est obligatoire")]
     private ?Order $orders = null;
 
     #[ORM\ManyToOne(inversedBy: 'orderProducts')]
+    #[Assert\NotNull(message: "Un produit est obligatoire")]
     private ?Product $product = null;
 
     #[ORM\Column]
+    #[Assert\NotNull(message: "La quantité est obligatoire")]
+    #[Assert\Positive(message: "La quantité doit être un nombre positif")]
     private ?int $quantity = null;
 
     public function getId(): ?int

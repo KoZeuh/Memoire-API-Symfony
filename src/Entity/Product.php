@@ -8,7 +8,11 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
+use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+
 #[ORM\Entity(repositoryClass: ProductRepository::class)]
+#[UniqueEntity('name', message: 'Nom déjà utilisé')]
 class Product
 {
     #[ORM\Id]
@@ -17,12 +21,15 @@ class Product
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
+    #[Assert\NotBlank(message: "Le nom est obligatoire")]
     private ?string $name = null;
 
     #[ORM\Column(type: Types::TEXT)]
     private ?string $description = null;
 
-    #[ORM\Column(length: 255)]
+    #[ORM\Column]
+    #[Assert\NotNull(message: "Le prix est obligatoire")]
+    #[Assert\Positive(message: "Le prix doit être un nombre positif")]
     private ?float $price = null;
 
     /**

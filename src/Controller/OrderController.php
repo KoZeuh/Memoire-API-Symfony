@@ -160,7 +160,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(Order $order, Request $request, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
+    public function update(Order $order, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository): JsonResponse
     {
         if (!$order) {
             return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
@@ -177,6 +177,20 @@ final class OrderController extends AbstractController
         }
         if (isset($data['status'])) {
             $order->setStatus($data['status']);
+        }
+
+        $errors = $validator->validate($order);
+
+        if (count($errors) > 0) {
+            $errorMessages = [];
+            foreach ($errors as $error) {
+                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+            }
+
+            return $this->json([
+                'error' => 'Validation échouée',
+                'violations' => $errorMessages
+            ], Response::HTTP_BAD_REQUEST);
         }
 
         $entityManager->flush();

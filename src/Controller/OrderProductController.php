@@ -13,6 +13,8 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+
 #[Route('/order-product', name: 'app_order_product_')]
 final class OrderProductController extends AbstractController
 {
@@ -66,7 +68,7 @@ final class OrderProductController extends AbstractController
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
+    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
 
@@ -89,6 +91,20 @@ final class OrderProductController extends AbstractController
         $orderProduct->setProduct($product);
         $orderProduct->setQuantity($data['quantity']);
 
+        $errors = $validator->validate($orderProduct);
+
+        if (count($errors) > 0) {
+            $errorMessages = [];
+            foreach ($errors as $error) {
+                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+            }
+
+            return $this->json([
+                'error' => 'Validation échouée',
+                'violations' => $errorMessages
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
         $entityManager->persist($orderProduct);
         $entityManager->flush();
 
@@ -99,7 +115,7 @@ final class OrderProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(OrderProduct $orderProduct, Request $request, EntityManagerInterface $entityManager, OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
+    public function update(OrderProduct $orderProduct, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator,OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
     {
         if (!$orderProduct) {
             return $this->json(['error' => 'OrderProduct not found'], Response::HTTP_NOT_FOUND);
@@ -123,6 +139,20 @@ final class OrderProductController extends AbstractController
         }
         if (isset($data['quantity'])) {
             $orderProduct->setQuantity($data['quantity']);
+        }
+
+        $errors = $validator->validate($orderProduct);
+
+        if (count($errors) > 0) {
+            $errorMessages = [];
+            foreach ($errors as $error) {
+                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+            }
+
+            return $this->json([
+                'error' => 'Validation échouée',
+                'violations' => $errorMessages
+            ], Response::HTTP_BAD_REQUEST);
         }
 
         $entityManager->flush();
