@@ -43,14 +43,14 @@ final class OrderController extends AbstractController
             ];
         };
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(Order $order): JsonResponse
     {
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
         $data = [
@@ -73,32 +73,32 @@ final class OrderController extends AbstractController
             }, $order->getOrderProducts()->toArray()),
         ];
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (!isset($data['user_id']) || !isset($data['status'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
+        if (!$payload->has('user_id') || !$payload->has('status')) {
+            return $this->json(['error' => 'Champs requis manquants'], Response::HTTP_BAD_REQUEST);
         }
 
-        $user = $userRepository->find($data['user_id']);
+        $user = $userRepository->find($payload->get('user_id'));
         if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $order = new Order();
         $order->setUser($user);
-        $order->setStatus($data['status']);
+        $order->setStatus($payload->getString('status'));
 
         $entityManager->persist($order);
         $entityManager->flush();
 
         return $this->json([
-            'message' => 'Order created successfully',
+            'message' => 'Commande créée avec succès',
             'id' => $order->getId()
         ], Response::HTTP_CREATED);
     }
@@ -107,37 +107,37 @@ final class OrderController extends AbstractController
     public function update(Order $order, Request $request, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
     {
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['user_id'])) {
-            $user = $userRepository->find($data['user_id']);
+        if ($payload->has('user_id')) {
+            $user = $userRepository->find($payload->get('user_id'));
             if (!$user) {
-                return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+                return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
             }
             $order->setUser($user);
         }
-        if (isset($data['status'])) {
-            $order->setStatus($data['status']);
+        if ($payload->has('status')) {
+            $order->setStatus($payload->getString('status'));
         }
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'Order updated successfully']);
+        return $this->json(['message' => 'Commande mise à jour avec succès'], Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
     public function delete(Order $order, OrderRepository $orderRepository, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
         $entityManager->remove($order);
         $entityManager->flush();
 
-        return $this->json(['message' => 'Order deleted successfully'], Response::HTTP_OK);
+        return $this->json(['message' => 'Commande supprimée avec succès'], Response::HTTP_OK);
     }
 }

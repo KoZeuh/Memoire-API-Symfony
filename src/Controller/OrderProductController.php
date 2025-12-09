@@ -45,7 +45,7 @@ final class OrderProductController extends AbstractController
     public function show(OrderProduct $orderProduct): JsonResponse
     {
         if (!$orderProduct) {
-            return $this->json(['error' => 'OrderProduct not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit de commande non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $data = [
@@ -62,38 +62,38 @@ final class OrderProductController extends AbstractController
             ],
         ];
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager, OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (!isset($data['order_id']) || !isset($data['product_id']) || !isset($data['quantity'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
+        if (!$payload->has('order_id') || !$payload->has('product_id') || !$payload->has('quantity')) {
+            return $this->json(['error' => 'Champs requis manquants'], Response::HTTP_BAD_REQUEST);
         }
 
-        $order = $orderRepository->find($data['order_id']);
+        $order = $orderRepository->find($payload->get('order_id'));
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
-        $product = $productRepository->find($data['product_id']);
+        $product = $productRepository->find($payload->get('product_id'));
         if (!$product) {
-            return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $orderProduct = new OrderProduct();
         $orderProduct->setOrders($order);
         $orderProduct->setProduct($product);
-        $orderProduct->setQuantity($data['quantity']);
+        $orderProduct->setQuantity($payload->getInt('quantity'));
 
         $entityManager->persist($orderProduct);
         $entityManager->flush();
 
         return $this->json([
-            'message' => 'OrderProduct created successfully',
+            'message' => 'Produit de commande créé avec succès',
             'id' => $orderProduct->getId()
         ], Response::HTTP_CREATED);
     }
@@ -102,44 +102,44 @@ final class OrderProductController extends AbstractController
     public function update(OrderProduct $orderProduct, Request $request, EntityManagerInterface $entityManager, OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
     {
         if (!$orderProduct) {
-            return $this->json(['error' => 'OrderProduct not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit de commande non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['order_id'])) {
-            $order = $orderRepository->find($data['order_id']);
+        if ($payload->has('order_id')) {
+            $order = $orderRepository->find($payload->get('order_id'));
             if (!$order) {
-                return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+                return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
             }
             $orderProduct->setOrders($order);
         }
-        if (isset($data['product_id'])) {
-            $product = $productRepository->find($data['product_id']);
+        if ($payload->has('product_id')) {
+            $product = $productRepository->find($payload->get('product_id'));
             if (!$product) {
-                return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
+                return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
             }
             $orderProduct->setProduct($product);
         }
-        if (isset($data['quantity'])) {
-            $orderProduct->setQuantity($data['quantity']);
+        if ($payload->has('quantity')) {
+            $orderProduct->setQuantity($payload->getInt('quantity'));
         }
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'OrderProduct updated successfully']);
+        return $this->json(['message' => 'Produit de commande mis à jour avec succès'], Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
     public function delete(OrderProduct $orderProduct, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$orderProduct) {
-            return $this->json(['error' => 'OrderProduct not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit de commande non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $entityManager->remove($orderProduct);
         $entityManager->flush();
 
-        return $this->json(['message' => 'OrderProduct deleted successfully'], Response::HTTP_OK);
+        return $this->json(['message' => 'Produit de commande supprimé avec succès'], Response::HTTP_OK);
     }
 }

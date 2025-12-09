@@ -29,14 +29,14 @@ final class UserController extends AbstractController
             ];
         };
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(User $user): JsonResponse
     {
         if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $data = [
@@ -45,30 +45,30 @@ final class UserController extends AbstractController
             'roles' => $user->getRoles(),
         ];
 
-        return $this->json($data);
+        return $this->json($data, Response::HTTP_OK);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (!isset($data['email']) || !isset($data['password'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
+        if (!$payload->has('email') || !$payload->has('password')) {
+            return $this->json(['error' => 'Champs requis manquants'], Response::HTTP_BAD_REQUEST);
         }
 
         $user = new User();
-        $user->setEmail($data['email']);
-        $user->setRoles($data['roles'] ?? ['ROLE_USER']);
+        $user->setEmail($payload->getString('email'));
+        $user->setRoles($payload->get('roles') ?? ['ROLE_USER']);
 
-        $hashedPassword = $passwordHasher->hashPassword($user, $data['password']);
+        $hashedPassword = $passwordHasher->hashPassword($user, $payload->getString('password'));
         $user->setPassword($hashedPassword);
 
         $entityManager->persist($user);
         $entityManager->flush();
 
         return $this->json([
-            'message' => 'User created successfully',
+            'message' => 'Utilisateur créé avec succès',
             'id' => $user->getId()
         ], Response::HTTP_CREATED);
     }
@@ -77,37 +77,37 @@ final class UserController extends AbstractController
     public function update(User $user, Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher): JsonResponse
     {
         if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['email'])) {
-            $user->setEmail($data['email']);
+        if ($payload->has('email')) {
+            $user->setEmail($payload->getString('email'));
         }
-        if (isset($data['roles'])) {
-            $user->setRoles($data['roles']);
+        if ($payload->has('roles')) {
+            $user->setRoles($payload->get('roles'));
         }
-        if (isset($data['password'])) {
-            $hashedPassword = $passwordHasher->hashPassword($user, $data['password']);
+        if ($payload->has('password')) {
+            $hashedPassword = $passwordHasher->hashPassword($user, $payload->getString('password'));
             $user->setPassword($hashedPassword);
         }
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'User updated successfully']);
+        return $this->json(['message' => 'Utilisateur mis à jour avec succès'], Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
     public function delete(User $user, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $entityManager->remove($user);
         $entityManager->flush();
 
-        return $this->json(['message' => 'User deleted successfully'], Response::HTTP_OK);
+        return $this->json(['message' => 'Utilisateur supprimé avec succès'], Response::HTTP_OK);
     }
 }
