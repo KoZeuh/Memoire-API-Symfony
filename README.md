@@ -191,7 +191,7 @@ Résultat :
 ```
 {
     "message": "Erreur lors de la création de la commande",
-    "error": "Warning: Undefined array key \\"userId\\""
+    "error": "The identifier id is missing for a query of App\\Entity\\User"
 }
 ```
 
