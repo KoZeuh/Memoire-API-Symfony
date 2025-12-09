@@ -486,29 +486,25 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 ```php
 
-#[Route('', name: 'create', methods: ['POST'])]
+    #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository, ProductRepository $productRepository): JsonResponse
     {
         try {
-            $data = json_decode($request->getContent(), true);
-            $user = $userRepository->find($data['userId']);
+            $payload = $request->getPayload();
+            $user = $userRepository->find($payload->get('userId'));
 
             if (!$user) {
-                return $this->json([
-                    'message' => 'Utilisateur non trouvé'
-                ], Response::HTTP_NOT_FOUND);
+                return $this->json(['message' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
             }
 
             $order = new Order();
             $order->setUser($user);
 
-            foreach ($data['products'] as $index => $productData) {
+            foreach ($payload->all()['products'] as $index => $productData) {
                 $product = $productRepository->find($productData['id']);
 
                 if (!$product) {
-                    return $this->json([
-                        'error' => 'Produit non trouvé'
-                    ], Response::HTTP_NOT_FOUND);
+                    return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
                 }
 
                 $orderProduct = new OrderProduct();
@@ -545,8 +541,8 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
                 return $this->json([
                     'error' => 'Validation échouée',
-                    'violations' => $errorMessages
-                ], Response::HTTP_BAD_REQUEST);
+                    'violations' => $errorMessages], 
+                Response::HTTP_BAD_REQUEST);
             }
 
             $entityManager->persist($order);
@@ -557,7 +553,10 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
                 'orderId' => $order->getId()
             ], Response::HTTP_CREATED);
         } catch (\Exception $e) {
-            return $this->json(['message' => 'Erreur lors de la création de la commande', 'error' => $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->json([
+                'message' => 'Erreur lors de la création de la commande', 
+                'error' => $e->getMessage()], 
+            Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -571,20 +570,22 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
     public function update(Order $order, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository): JsonResponse
     {
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['user_id'])) {
-            $user = $userRepository->find($data['user_id']);
+        if ($payload->has('user_id')) {
+            $user = $userRepository->find($payload->get('user_id'));
+
             if (!$user) {
-                return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+                return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
             }
+
             $order->setUser($user);
         }
-        if (isset($data['status'])) {
-            $order->setStatus($data['status']);
+        if ($payload->has('status')) {
+            $order->setStatus($payload->getString('status'));
         }
 
         $errors = $validator->validate($order);
@@ -603,7 +604,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'Order updated successfully']);
+        return $this->json(['message' => 'Commande mise à jour avec succès'], Response::HTTP_OK);
     }
 
 ```
@@ -623,26 +624,26 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (!isset($data['order_id']) || !isset($data['product_id']) || !isset($data['quantity'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
+        if (!$payload->has('order_id') || !$payload->has('product_id') || !$payload->has('quantity')) {
+            return $this->json(['error' => 'Champs requis manquants'], Response::HTTP_BAD_REQUEST);
         }
 
-        $order = $orderRepository->find($data['order_id']);
+        $order = $orderRepository->find($payload->get('order_id'));
         if (!$order) {
-            return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
-        $product = $productRepository->find($data['product_id']);
+        $product = $productRepository->find($payload->get('product_id'));
         if (!$product) {
-            return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $orderProduct = new OrderProduct();
         $orderProduct->setOrders($order);
         $orderProduct->setProduct($product);
-        $orderProduct->setQuantity($data['quantity']);
+        $orderProduct->setQuantity($payload->getInt('quantity'));
 
         $errors = $validator->validate($orderProduct);
 
@@ -662,7 +663,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
         $entityManager->flush();
 
         return $this->json([
-            'message' => 'OrderProduct created successfully',
+            'message' => 'Produit de commande créée avec succès',
             'id' => $orderProduct->getId()
         ], Response::HTTP_CREATED);
     }
@@ -673,31 +674,31 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 ```php
 
-#[Route('/{id}', name: 'update', methods: ['PUT'])]
+    #[Route('/{id}', name: 'update', methods: ['PUT'])]
     public function update(OrderProduct $orderProduct, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator,OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
     {
         if (!$orderProduct) {
-            return $this->json(['error' => 'OrderProduct not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit de commande non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['order_id'])) {
-            $order = $orderRepository->find($data['order_id']);
+        if ($payload->has('order_id')) {
+            $order = $orderRepository->find($payload->get('order_id'));
             if (!$order) {
-                return $this->json(['error' => 'Order not found'], Response::HTTP_NOT_FOUND);
+                return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
             }
             $orderProduct->setOrders($order);
         }
-        if (isset($data['product_id'])) {
-            $product = $productRepository->find($data['product_id']);
+        if ($payload->has('product_id')) {
+            $product = $productRepository->find($payload->get('product_id'));
             if (!$product) {
-                return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
+                return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
             }
             $orderProduct->setProduct($product);
         }
-        if (isset($data['quantity'])) {
-            $orderProduct->setQuantity($data['quantity']);
+        if ($payload->has('quantity')) {
+            $orderProduct->setQuantity($payload->getInt('quantity'));
         }
 
         $errors = $validator->validate($orderProduct);
@@ -716,7 +717,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'OrderProduct updated successfully']);
+        return $this->json(['message' => 'Produit de commande mis à jour avec succès'], Response::HTTP_OK);
     }
 
 ```
@@ -737,12 +738,13 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
         $product = new Product();
-        $product->setName($data['name'] ?? null);
-        $product->setDescription($data['description'] ?? null);
-        $product->setPrice($data['price'] ?? null);
+        $product->setName($payload->get('name'));
+        $product->setDescription($payload->get('description'));
+        $product->setPrice($payload->get('price'));
+        $product->setCode($payload->get('code'));
 
         $errors = $validator->validate($product);
 
@@ -762,7 +764,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
         $entityManager->flush();
 
         return $this->json([
-            'message' => 'Product created successfully',
+            'message' => 'Produit créé avec succès',
             'id' => $product->getId()
         ], Response::HTTP_CREATED);
     }
@@ -777,19 +779,22 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
     public function update(Product $product, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
         if (!$product) {
-            return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['name'])) {
-            $product->setName($data['name']);
+        if ($payload->has('name')) {
+            $product->setName($payload->getString('name'));
         }
-        if (isset($data['description'])) {
-            $product->setDescription($data['description']);
+        if ($payload->has('description')) {
+            $product->setDescription($payload->getString('description'));
         }
-        if (isset($data['price'])) {
-            $product->setPrice($data['price']);
+        if ($payload->has('price')) {
+            $product->setPrice($payload->get('price'));
+        }
+        if ($payload->has('code')) {
+            $product->setCode($payload->getString('code'));
         }
 
         $errors = $validator->validate($product);
@@ -808,8 +813,9 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'Product updated successfully']);
+        return $this->json(['message' => 'Produit mis à jour avec succès'], Response::HTTP_OK);
     }
+
 ```
 
 (UserController - import)
@@ -828,13 +834,14 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserPasswordHasherInterface $passwordHasher): JsonResponse
     {
         try {
-            $data = json_decode($request->getContent(), true);
+            $payload = $request->getPayload();
 
             $user = new User();
-            $user->setEmail($data['email'] ?? null);
+            $user->setEmail($payload->get('email'));
+            $user->setRoles($payload->get('roles') ?? ['ROLE_USER']);
 
             // Validation AVANT le hashage du mot de passe
-            $plainPassword = $data['password'] ?? null;
+            $plainPassword = $payload->get('password');
             $user->setPassword($plainPassword); // Temporairement pour la validation
 
             $errors = $validator->validate($user);
@@ -858,9 +865,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
             $entityManager->persist($user);
             $entityManager->flush();
 
-            return $this->json([
-                'message' => 'Utilisateur créé avec succès'
-            ], Response::HTTP_CREATED);
+            return $this->json(['message' => 'Utilisateur créé avec succès'], Response::HTTP_CREATED);
         } catch (\Exception $e) {
             return $this->json([
                 'message' => 'Erreur lors de la création de l\'utilisateur',
@@ -879,19 +884,19 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
     public function update(User $user, Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher, ValidatorInterface $validator): JsonResponse
     {
         if (!$user) {
-            return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['email'])) {
-            $user->setEmail($data['email']);
+        if ($payload->has('email')) {
+            $user->setEmail($payload->getString('email'));
         }
-        if (isset($data['roles'])) {
-            $user->setRoles($data['roles']);
+        if ($payload->has('roles')) {
+            $user->setRoles($payload->get('roles'));
         }
-        if (isset($data['password'])) {
-            $hashedPassword = $passwordHasher->hashPassword($user, $data['password']);
+        if ($payload->has('password')) {
+            $hashedPassword = $passwordHasher->hashPassword($user, $payload->getString('password'));
             $user->setPassword($hashedPassword);
         }
 
@@ -911,8 +916,9 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
         $entityManager->flush();
 
-        return $this->json(['message' => 'User updated successfully']);
+        return $this->json(['message' => 'Utilisateur mis à jour avec succès'], Response::HTTP_OK);
     }
+    
 ```
 
 
@@ -1107,7 +1113,7 @@ POST /product
 Résultat : 
 ```
 {
-    "message" => "Product created successfully",
+    "message" => "Produit créé avec succès",
     "id" => 1
 }
 ```
