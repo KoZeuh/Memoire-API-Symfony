@@ -3,8 +3,10 @@
 namespace App\Controller;
 
 use App\Entity\Order;
-use App\Repository\OrderRepository;
+use App\Entity\OrderProduct;
 use App\Repository\UserRepository;
+use App\Repository\OrderRepository;
+use App\Repository\ProductRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -77,29 +79,41 @@ final class OrderController extends AbstractController
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, UserRepository $userRepository): JsonResponse
+    public function create(Request $request, EntityManagerInterface $entityManager, UserRepository $userRepository, ProductRepository $productRepository): JsonResponse
     {
         $payload = $request->getPayload();
+        $user = $userRepository->find($payload->get('userId'));
 
-        if (!$payload->has('user_id') || !$payload->has('status')) {
-            return $this->json(['error' => 'Champs requis manquants'], Response::HTTP_BAD_REQUEST);
-        }
-
-        $user = $userRepository->find($payload->get('user_id'));
         if (!$user) {
-            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
+            return $this->json(['message' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
         $order = new Order();
         $order->setUser($user);
-        $order->setStatus($payload->getString('status'));
+
+        foreach ($payload->all()['products'] as $index => $productData) {
+            $product = $productRepository->find($productData['id']);
+
+            if (!$product) {
+                return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
+            }
+
+            $orderProduct = new OrderProduct();
+            $orderProduct->setOrders($order);
+            $orderProduct->setProduct($product);
+            $orderProduct->setQuantity((int)$productData['quantity']);
+
+            $order->addOrderProduct($orderProduct);
+
+            $entityManager->persist($orderProduct);
+        }
 
         $entityManager->persist($order);
         $entityManager->flush();
 
         return $this->json([
             'message' => 'Commande créée avec succès',
-            'id' => $order->getId()
+            'orderId' => $order->getId()
         ], Response::HTTP_CREATED);
     }
 
