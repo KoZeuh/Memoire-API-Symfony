@@ -120,8 +120,8 @@ final class UserController extends AbstractController
         if (isset($data['email'])) {
             $user->setEmail($data['email']);
         }
-        if (isset($data['roles'])) {
-            $user->setRoles($data['roles']);
+        if (isset($data['role'])) {
+            $user->setRole($data['role']);
         }
         if (isset($data['password'])) {
             $hashedPassword = $passwordHasher->hashPassword($user, $data['password']);
