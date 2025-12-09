@@ -14,6 +14,8 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 use App\Security\Voter\ProductVoter;
 
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+
 #[Route('/product', name: 'app_product_')]
 #[IsGranted('IS_AUTHENTICATED_FULLY')]
 final class ProductController extends AbstractController
@@ -56,7 +58,7 @@ final class ProductController extends AbstractController
 
     #[Route('', name: 'create', methods: ['POST'])]
     #[IsGranted('PRODUCT_CREATE', subject: 'product')]
-    public function create(Request $request, EntityManagerInterface $entityManager): JsonResponse
+    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
 
@@ -65,9 +67,24 @@ final class ProductController extends AbstractController
         }
 
         $product = new Product();
-        $product->setName($data['name']);
+        $product->setName($data['name'] ?? null);
         $product->setDescription($data['description'] ?? null);
-        $product->setPrice($data['price']);
+        $product->setPrice($data['price'] ?? null);
+        $product->setCode($data['code'] ?? null);
+
+        $errors = $validator->validate($product);
+
+        if (count($errors) > 0) {
+            $errorMessages = [];
+            foreach ($errors as $error) {
+                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+            }
+
+            return $this->json([
+                'error' => 'Validation échouée',
+                'violations' => $errorMessages
+            ], Response::HTTP_BAD_REQUEST);
+        }
 
         $entityManager->persist($product);
         $entityManager->flush();
@@ -80,7 +97,7 @@ final class ProductController extends AbstractController
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
     #[IsGranted('PRODUCT_EDIT', subject: 'product')]
-    public function update(Product $product, Request $request, EntityManagerInterface $entityManager): JsonResponse
+    public function update(Product $product, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
         if (!$product) {
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
@@ -96,6 +113,23 @@ final class ProductController extends AbstractController
         }
         if (isset($data['price'])) {
             $product->setPrice($data['price']);
+        }
+        if (isset($data['code'])) {
+            $product->setCode($data['code']);
+        }
+
+        $errors = $validator->validate($product);
+
+        if (count($errors) > 0) {
+            $errorMessages = [];
+            foreach ($errors as $error) {
+                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+            }
+
+            return $this->json([
+                'error' => 'Validation échouée',
+                'violations' => $errorMessages
+            ], Response::HTTP_BAD_REQUEST);
         }
 
         $entityManager->flush();
