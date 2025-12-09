@@ -52,16 +52,16 @@ final class ProductController extends AbstractController
     #[Route('', name: 'create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $entityManager): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (!isset($data['name']) || !isset($data['price'])) {
+        if (!$payload->has('name') || !$payload->has('price')) {
             return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
         }
 
         $product = new Product();
-        $product->setName($data['name']);
-        $product->setDescription($data['description'] ?? null);
-        $product->setPrice($data['price']);
+        $product->setName($payload->getString('name'));
+        $product->setDescription($payload->getString('description', ''));
+        $product->setPrice($payload->get('price'));
 
         $entityManager->persist($product);
         $entityManager->flush();
@@ -79,16 +79,16 @@ final class ProductController extends AbstractController
             return $this->json(['error' => 'Product not found'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = json_decode($request->getContent(), true);
+        $payload = $request->getPayload();
 
-        if (isset($data['name'])) {
-            $product->setName($data['name']);
+        if ($payload->has('name')) {
+            $product->setName($payload->getString('name'));
         }
-        if (isset($data['description'])) {
-            $product->setDescription($data['description']);
+        if ($payload->has('description')) {
+            $product->setDescription($payload->getString('description'));
         }
-        if (isset($data['price'])) {
-            $product->setPrice($data['price']);
+        if ($payload->has('price')) {
+            $product->setPrice($payload->get('price'));
         }
 
         $entityManager->flush();
