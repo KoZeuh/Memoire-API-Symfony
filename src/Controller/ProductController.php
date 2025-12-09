@@ -60,6 +60,7 @@ final class ProductController extends AbstractController
         $product->setName($data['name'] ?? null);
         $product->setDescription($data['description'] ?? null);
         $product->setPrice($data['price'] ?? null);
+        $product->setCode($data['code'] ?? null);
 
         $errors = $validator->validate($product);
 
@@ -101,6 +102,9 @@ final class ProductController extends AbstractController
         }
         if (isset($data['price'])) {
             $product->setPrice($data['price']);
+        }
+        if (isset($data['code'])) {
+            $product->setCode($data['code']);
         }
 
         $errors = $validator->validate($product);

@@ -19,6 +19,7 @@ class ProductFixture extends Fixture
             $product->setName($faker->word());
             $product->setDescription($faker->sentence());
             $product->setPrice($faker->randomFloat(2, 1, 100));
+            $product->setCode(sprintf('PRD-%04d', $i + 1));
 
             $manager->persist($product);
             $this->addReference(self::PRODUCT_REFERENCE . $i, $product);

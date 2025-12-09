@@ -11,6 +11,8 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 
+//use App\Validator\Constraints\ProductCode;
+
 #[ORM\Entity(repositoryClass: ProductRepository::class)]
 #[UniqueEntity('name', message: 'Nom déjà utilisé')]
 class Product
@@ -31,6 +33,10 @@ class Product
     #[Assert\NotNull(message: "Le prix est obligatoire")]
     #[Assert\Positive(message: "Le prix doit être un nombre positif")]
     private ?float $price = null;
+
+    #[ORM\Column(length: 10, unique: true, nullable: true)]
+    #[ProductCode]
+    private ?string $code = null;
 
     /**
      * @var Collection<int, OrderProduct>
@@ -80,6 +86,18 @@ class Product
     public function setPrice(float $price): static
     {
         $this->price = $price;
+
+        return $this;
+    }
+
+    public function getCode(): ?string
+    {
+        return $this->code;
+    }
+
+    public function setCode(?string $code): static
+    {
+        $this->code = $code;
 
         return $this;
     }
