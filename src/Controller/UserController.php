@@ -18,6 +18,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 final class UserController extends AbstractController
 {
     #[Route('/', name: 'list', methods: ['GET'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function list(UserRepository $userRepository): JsonResponse
     {
         $users = $userRepository->findAll();
@@ -35,6 +36,7 @@ final class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function show(User $user): JsonResponse
     {
         if (!$user) {
@@ -106,6 +108,7 @@ final class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function update(User $user, Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher, ValidatorInterface $validator): JsonResponse
     {
         if (!$user) {
@@ -145,6 +148,7 @@ final class UserController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
     public function delete(User $user, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$user) {

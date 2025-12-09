@@ -20,6 +20,8 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
+use Symfony\Component\Security\Http\Attribute\IsGranted;
+
 #[Route('/order', name: 'app_order_')]
 final class OrderController extends AbstractController
 {
@@ -55,6 +57,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
+    #[IsGranted('ORDER_SHOW', subject: 'order')]
     public function show(Order $order): JsonResponse
     {
         if (!$order) {
@@ -159,6 +162,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
+    #[IsGranted('ORDER_EDIT', subject: 'order')]
     public function update(Order $order, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository): JsonResponse
     {
         if (!$order) {
@@ -200,6 +204,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
+    #[IsGranted('ORDER_DELETE', subject: 'order')]
     public function delete(Order $order, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$order) {

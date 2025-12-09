@@ -12,16 +12,13 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-use App\Security\Voter\ProductVoter;
 
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/product', name: 'app_product_')]
-#[IsGranted('IS_AUTHENTICATED_FULLY')]
 final class ProductController extends AbstractController
 {
     #[Route('/', name: 'list', methods: ['GET'])]
-    #[IsGranted('IS_AUTHENTICATED_FULLY')]
     public function list(ProductRepository $productRepository): JsonResponse
     {
         $products = $productRepository->findAll();
@@ -57,7 +54,7 @@ final class ProductController extends AbstractController
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
-    #[IsGranted('PRODUCT_CREATE', subject: 'product')]
+    #[IsGranted('ROLE_ADMIN')]
     public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
         $payload = $request->getPayload();
@@ -92,7 +89,7 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    #[IsGranted('PRODUCT_EDIT', subject: 'product')]
+    #[IsGranted('ROLE_ADMIN')]
     public function update(Product $product, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
         if (!$product) {
@@ -134,7 +131,7 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('PRODUCT_DELETE', subject: 'product')]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
     public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$product) {
