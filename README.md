@@ -10,7 +10,6 @@ lexik_jwt_authentication:
     public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
     pass_phrase: '%env(JWT_PASSPHRASE)%'
     token_ttl: 3600 # 1 heure
-    user_id_claim: email
 
 ```
 
@@ -163,8 +162,7 @@ POST /user/login
 Résultat :
 ```
 {
-    "token": "eyJ0eXAiOiJKV1QiLCJhbGci...",
-    "refresh_token": "def50200a5c8e9b7..."
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGci..."
 }
 ```
 
@@ -198,14 +196,8 @@ Résultat :
 Test 4 - Renouvellement du token :
 ```
 POST /token/refresh
-{
-    "refresh_token": "2161407de......"
-}
 ```
 ```
 Résultat :
-{
-    "refresh_token": "def50200a5c8e9b7..."
-}
 ```
 
