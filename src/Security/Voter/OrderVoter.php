@@ -20,6 +20,12 @@ class OrderVoter extends Voter
             return false;
         }
 
+        // LIST n'a pas besoin de subject
+        if ($attribute === self::LIST) {
+            return true;
+        }
+
+        // Les autres actions nécessitent un objet Order
         if (!$subject instanceof Order) {
             return false;
         }

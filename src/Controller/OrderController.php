@@ -23,9 +23,11 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/order', name: 'app_order_')]
+#[IsGranted('IS_AUTHENTICATED_FULLY')]
 final class OrderController extends AbstractController
 {
     #[Route('/', name: 'list', methods: ['GET'])]
+    #[IsGranted('ORDER_LIST')]
     public function list(OrderRepository $orderRepository): JsonResponse
     {
         $orders = $orderRepository->findAll();
@@ -51,7 +53,7 @@ final class OrderController extends AbstractController
                     ];
                 }, $order->getOrderProducts()->toArray()),
             ];
-        };
+        }
 
         return $this->json($data, Response::HTTP_OK);
     }

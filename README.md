@@ -15,7 +15,6 @@ Etape 2 (Création du Voter) :
 
 ```php
 # src/Security/Voter/OrderVoter
-
 <?php
 
 namespace App\Security\Voter;
@@ -38,6 +37,12 @@ class OrderVoter extends Voter
             return false;
         }
 
+        // LIST n'a pas besoin de subject
+        if ($attribute === self::LIST) {
+            return true;
+        }
+
+        // Les autres actions nécessitent un objet Order
         if (!$subject instanceof Order) {
             return false;
         }
@@ -91,8 +96,6 @@ Etape 3 (Implémenter le voter dans le contrôleur) :
 ```php
 # src/Controller/OrderController.php
 
-<?php
-
 namespace App\Controller;
 
 use App\Entity\Order;
@@ -116,9 +119,11 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/order', name: 'app_order_')]
+#[IsGranted('IS_AUTHENTICATED_FULLY')]
 final class OrderController extends AbstractController
 {
     #[Route('/', name: 'list', methods: ['GET'])]
+    #[IsGranted('ORDER_LIST')]
     public function list(OrderRepository $orderRepository): JsonResponse
     {
         $orders = $orderRepository->findAll();
@@ -144,7 +149,7 @@ final class OrderController extends AbstractController
                     ];
                 }, $order->getOrderProducts()->toArray()),
             ];
-        };
+        }
 
         return $this->json($data, Response::HTTP_OK);
     }
@@ -676,7 +681,27 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+[
+    {
+        "id": 1,
+        "status": "cancelled",
+        "user": {
+            "id": 9,
+            "email": "kemmer.wilmer@runolfsdottir.info"
+        },
+        "orderProducts": [
+            {
+                "id": 1,
+                "quantity": 4,
+                "product": {
+                    "id": 9,
+                    "name": "qui",
+                    "price": 50.71
+                }
+            }
+        ]
+    }
+]
 ```
 
 Test 4 - Récupération d’une commande sans être l’auteur :
@@ -688,7 +713,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 5 - Récupération d’une commande en étant l’auteur :
@@ -700,7 +725,27 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+[
+    {
+        "id": 1,
+        "status": "cancelled",
+        "user": {
+            "id": 9,
+            "email": "kemmer.wilmer@runolfsdottir.info"
+        },
+        "orderProducts": [
+            {
+                "id": 1,
+                "quantity": 4,
+                "product": {
+                    "id": 9,
+                    "name": "qui",
+                    "price": 50.71
+                }
+            }
+        ]
+    }
+]
 ```
 
 Test 6 - Récupération d’une commande sans autorisation : 
@@ -712,7 +757,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 7 - Récupération d’une commande avec autorisation :
@@ -724,7 +769,27 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+[
+    {
+        "id": 1,
+        "status": "cancelled",
+        "user": {
+            "id": 9,
+            "email": "kemmer.wilmer@runolfsdottir.info"
+        },
+        "orderProducts": [
+            {
+                "id": 1,
+                "quantity": 4,
+                "product": {
+                    "id": 9,
+                    "name": "qui",
+                    "price": 50.71
+                }
+            }
+        ]
+    }
+]
 ```
 
 Test 8 - Modification d’une commande sans autorisation :
@@ -736,7 +801,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 9 - Modification d’une commande avec autorisation :
@@ -748,7 +813,9 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+{
+    "message": "Commande mise à jour avec succès"
+}
 ```
 
 Test 10 - Suppression d’une commande sans autorisation :
@@ -760,7 +827,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 11 - Suppression d’une commande avec autorisation :
@@ -772,7 +839,9 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+{
+    "message": "Commande supprimée avec succès"
+}
 ```
 
 Test 12 - Création d’un produit sans autorisation :
@@ -784,7 +853,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 13 - Création d’un produit avec autorisation :
@@ -796,7 +865,10 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+{
+    "message": "Produit créé avec succès",
+    "id": 11
+}
 ```
 
 Test 14 - Modification d’un produit sans autorisation :
@@ -808,7 +880,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 15 - Modification d’un produit avec autorisation :
@@ -820,7 +892,9 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+{
+    "message": "Produit mis à jour avec succès"
+}
 ```
 
 Test 16 - Suppression d’un produit sans autorisation :
@@ -832,7 +906,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 17 - Suppression d’un produit avec autorisation :
@@ -844,7 +918,9 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+{
+    "message": "Produit supprimé avec succès"
+}
 ```
 
 Test 18 - Liste des utilisateurs sans autorisation :
@@ -856,7 +932,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 19 - Liste des utilisateurs avec autorisation :
@@ -868,7 +944,22 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+[
+    {
+        "id": 1,
+        "email": "parker.arlo@jacobson.org",
+        "roles": [
+            "ROLE_USER"
+        ]
+    },
+    {
+        "id": 2,
+        "email": "walsh.cory@yahoo.com",
+        "roles": [
+            "ROLE_USER"
+        ]
+    },
+]
 ```
 
 Test 20 - Récupération d’un utilisateur sans autorisation :
@@ -880,7 +971,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 21 - Récupération d’un utilisateur avec autorisation :
@@ -892,7 +983,13 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+{
+    "id": 1,
+    "email": "parker.arlo@jacobson.org",
+    "roles": [
+        "ROLE_USER"
+    ]
+}
 ```
 
 Test 22 - Modification d’un utilisateur sans autorisation :
@@ -904,7 +1001,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 23 - Modification d’un utilisateur avec autorisation :
@@ -916,7 +1013,9 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+{
+    "message": "Utilisateur mis à jour avec succès"
+}
 ```
 
 Test 24 - Suppression d’un utilisateur sans autorisation :
@@ -928,7 +1027,7 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+Access Denied. (403 Forbidden)
 ```
 
 Test 25 - Suppression d’un utilisateur avec autorisation :
@@ -940,7 +1039,9 @@ Authorization : Bearer `token`
 
 Résultat : 
 ```
-
+{
+    "message": "Utilisateur supprimé avec succès"
+}
 ```
 
 
