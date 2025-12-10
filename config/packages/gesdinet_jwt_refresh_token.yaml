@@ -1,2 +1,12 @@
 gesdinet_jwt_refresh_token:
     refresh_token_class: App\Entity\RefreshToken
+    
+    cookie:
+        enabled: true
+        same_site: strict
+        path: /
+        domain: null
+        http_only: true # Flag HttpOnly
+        secure: true # Flag Secure
+        partitioned: false
+        remove_token_from_body: true
