@@ -195,7 +195,7 @@ class Order
     #[ORM\Column(length: 255)]
     private ?string $status = 'pending';
 
-    #[ORM\OneToMany(targetEntity: OrderProduct::class, mappedBy: 'order', orphanRemoval: true)]
+    #[ORM\OneToMany(targetEntity: OrderProduct::class, mappedBy: 'orders', orphanRemoval: true)]
     #[Assert\Count(
         min: 1,
         minMessage: "La commande doit contenir au moins {{ limit }} article"
