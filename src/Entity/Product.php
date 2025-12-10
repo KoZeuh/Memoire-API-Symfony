@@ -11,6 +11,8 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 
+use App\Validator\Constraints\ProductCode;
+
 #[ORM\Entity(repositoryClass: ProductRepository::class)]
 #[UniqueEntity('name', message: 'Nom déjà utilisé')]
 class Product
