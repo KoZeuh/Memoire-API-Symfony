@@ -164,7 +164,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    #[IsGranted('ORDER_EDIT', subject: 'order')]
+    #[IsGranted('ORDER_EDIT')]
     public function update(Order $order, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository): JsonResponse
     {
         if (!$order) {
@@ -206,7 +206,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('ORDER_DELETE', subject: 'order')]
+    #[IsGranted('ORDER_DELETE')]
     public function delete(Order $order, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$order) {

@@ -20,8 +20,9 @@ class OrderVoter extends Voter
             return false;
         }
 
-        // LIST n'a pas besoin de subject
-        if ($attribute === self::LIST) {
+        // LIST, EDIT, DELETE n'a pas besoin de subject (Dans ce cas de figure actuel)
+        // (Uniquement SHOW nécessite un subject Order car on vérifie si l'utilisateur peut voir une commande dont il est l'auteur)
+        if ($attribute === self::LIST || $attribute === self::EDIT || $attribute === self::DELETE) {
             return true;
         }
 

@@ -15,7 +15,6 @@ Etape 2 (Création du Voter) :
 
 ```php
 # src/Security/Voter/OrderVoter
-<?php
 
 namespace App\Security\Voter;
 
@@ -37,8 +36,9 @@ class OrderVoter extends Voter
             return false;
         }
 
-        // LIST n'a pas besoin de subject
-        if ($attribute === self::LIST) {
+        // LIST, EDIT, DELETE n'a pas besoin de subject (Dans ce cas de figure actuel)
+        // (Uniquement SHOW nécessite un subject Order car on vérifie si l'utilisateur peut voir une commande dont il est l'auteur)
+        if ($attribute === self::LIST || $attribute === self::EDIT || $attribute === self::DELETE) {
             return true;
         }
 
@@ -95,6 +95,8 @@ Etape 3 (Implémenter le voter dans le contrôleur) :
 
 ```php
 # src/Controller/OrderController.php
+
+<?php
 
 namespace App\Controller;
 
@@ -260,7 +262,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    #[IsGranted('ORDER_EDIT', subject: 'order')]
+    #[IsGranted('ORDER_EDIT')]
     public function update(Order $order, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository): JsonResponse
     {
         if (!$order) {
@@ -302,7 +304,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('ORDER_DELETE', subject: 'order')]
+    #[IsGranted('ORDER_DELETE')]
     public function delete(Order $order, EntityManagerInterface $entityManager): JsonResponse
     {
         if (!$order) {
@@ -316,14 +318,13 @@ final class OrderController extends AbstractController
     }
 }
 
+
 ```
 
 Etape 4 (Implémenter les restrictions dans le contrôleur) :
 
 ```php
 # src/Controller/ProductController.php
-
-<?php
 
 namespace App\Controller;
 
@@ -477,8 +478,6 @@ Etape 5 (Implémenter les restrictions dans le contrôleur) :
 ```php
 # src/Controller/UserController.php
 
-<?php
-
 namespace App\Controller;
 
 use App\Entity\User;
@@ -492,6 +491,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/user', name: 'app_user_')]
 final class UserController extends AbstractController
