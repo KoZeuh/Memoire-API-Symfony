@@ -10,7 +10,7 @@ use App\Repository\UserRepository;
 use App\Repository\ProductRepository;
 
 use Doctrine\ORM\EntityManagerInterface;
-
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -90,7 +90,7 @@ final class OrderController extends AbstractController
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository, ProductRepository $productRepository): JsonResponse
+    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository, ProductRepository $productRepository, LoggerInterface $orderLogger): JsonResponse
     {
         try {
             $payload = $request->getPayload();
@@ -142,24 +142,35 @@ final class OrderController extends AbstractController
                     $errorMessages[$error->getPropertyPath()] = $error->getMessage();
                 }
 
-                return $this->json([
-                    'error' => 'Validation échouée',
-                    'violations' => $errorMessages], 
-                Response::HTTP_BAD_REQUEST);
+                return $this->json(
+                    [
+                        'error' => 'Validation échouée',
+                        'violations' => $errorMessages
+                    ],
+                    Response::HTTP_BAD_REQUEST
+                );
             }
 
             $entityManager->persist($order);
             $entityManager->flush();
+
+            $orderLogger->info('Commande validée', [
+                'order_id' => $order->getId(),
+            ]);
+
 
             return $this->json([
                 'message' => 'Commande créée avec succès',
                 'orderId' => $order->getId()
             ], Response::HTTP_CREATED);
         } catch (\Exception $e) {
-            return $this->json([
-                'message' => 'Erreur lors de la création de la commande', 
-                'error' => $e->getMessage()], 
-            Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->json(
+                [
+                    'message' => 'Erreur lors de la création de la commande',
+                    'error' => $e->getMessage()
+                ],
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
         }
     }
 

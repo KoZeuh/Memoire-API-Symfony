@@ -5,19 +5,28 @@ namespace App\Controller;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
-
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Symfony\Bridge\Monolog\Logger;
+
 
 #[Route('/user', name: 'app_user_')]
 final class UserController extends AbstractController
 {
+    public function __construct(
+        #[Autowire(service: 'monolog.logger.security')]
+        private LoggerInterface $securityLogger
+    ) {}
+
+
     #[Route('/', name: 'list', methods: ['GET'])]
     #[IsGranted('ROLE_ADMIN')]
     public function list(UserRepository $userRepository): JsonResponse
@@ -54,12 +63,19 @@ final class UserController extends AbstractController
     }
 
     #[Route('/login', methods: ['POST'])]
-    public function login(): JsonResponse
-        {
+    public function login(Request $request, LoggerInterface $securityLogger): JsonResponse
+    {
         // Cette méthode ne sera jamais appelée car l'authentification est gérée par le firewall
         // Elle sert uniquement de point d'entrée pour la route /user/login
         // Le firewall 'login' dans security.yaml intercepte cette route et gère l'authentification
         // En cas de succès, lexik_jwt_authentication.handler.authentication_success retourne le token
+        $payload = $request->getPayload();
+        $email = $payload->get('email');
+
+        $securityLogger->info('Tentative de connexion', [
+            'email' => $email
+        ]);
+
         return $this->json([
             'message' => 'Cette route est gérée par le firewall pour l\'authentification.'
         ]);
@@ -121,9 +137,9 @@ final class UserController extends AbstractController
         if ($payload->has('email')) {
             $user->setEmail($payload->getString('email'));
         }
-        if ($payload->has('roles')) {
-            $user->setRoles($payload->get('roles'));
-        }
+        // if ($payload->has('roles')) {
+        //     $user->setRoles($payload->get('roles'));
+        // }
         if ($payload->has('password')) {
             $hashedPassword = $passwordHasher->hashPassword($user, $payload->getString('password'));
             $user->setPassword($hashedPassword);

@@ -1,0 +1,28 @@
+monolog:
+  channels: ['security', 'order']
+
+  handlers:
+    main:
+      type: stream
+      path: '%kernel.logs_dir%/%kernel.environment%.log'
+      level: debug
+
+    security:
+      type: stream
+      path: '%kernel.logs_dir%/security.log'
+      channels: ['security']
+      level: info
+
+    order:
+      type: stream
+      path: '%kernel.logs_dir%/order.log'
+      channels: ['order']
+      level: info
+
+    rotating:
+    type: rotating_file
+    path: '%kernel.logs_dir%/app.log'
+    max_files: 10
+
+
+

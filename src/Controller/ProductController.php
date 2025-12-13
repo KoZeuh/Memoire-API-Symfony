@@ -10,17 +10,22 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
+use Psr\Log\LoggerInterface;
 
 #[Route('/product', name: 'app_product_')]
 final class ProductController extends AbstractController
 {
     #[Route('/', name: 'list', methods: ['GET'])]
-    public function list(ProductRepository $productRepository): JsonResponse
-    {
+    public function list(ProductRepository $productRepository, Request $request, RateLimiterFactoryInterface $productListRouteLimiter): JsonResponse
+    {   
+        $limiter = $productListRouteLimiter->create($request->getClientIp());
+        if (false === $limiter->consume(1)->isAccepted()){
+            return $this->json(['error' => 'Trop de requêtes. Veuillez réessayer plus tard.'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         $products = $productRepository->findAll();
 
         $data = [];
@@ -55,8 +60,15 @@ final class ProductController extends AbstractController
 
     #[Route('', name: 'create', methods: ['POST'])]
     #[IsGranted('ROLE_ADMIN')]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
-    {
+    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, RateLimiterFactoryInterface $createRouteLimiter, LoggerInterface $logger): JsonResponse
+    {   
+
+        $limiter = $createRouteLimiter->create($request->getClientIp());
+
+        if (false === $limiter->consume(1)->isAccepted()){
+            return $this->json(['error' => 'Trop de requêtes. Veuillez réessayer plus tard.' ], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         $payload = $request->getPayload();
 
         $product = new Product();
@@ -81,6 +93,11 @@ final class ProductController extends AbstractController
 
         $entityManager->persist($product);
         $entityManager->flush();
+
+        $logger->info("Création d'un produit", [
+            'user' => $product->getId(), 
+            'route' => 'product.create'
+        ]);
 
         return $this->json([
             'message' => 'Produit créé avec succès',
