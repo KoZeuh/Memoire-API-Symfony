@@ -32,30 +32,9 @@ final class OrderController extends AbstractController
     {
         $orders = $orderRepository->findAll();
 
-        $data = [];
-        foreach ($orders as $order) {
-            $data[] = [
-                'id' => $order->getId(),
-                'status' => $order->getStatus(),
-                'user' => [
-                    'id' => $order->getUser()->getId(),
-                    'email' => $order->getUser()->getEmail(),
-                ],
-                'orderProducts' => array_map(function ($orderProduct) {
-                    return [
-                        'id' => $orderProduct->getId(),
-                        'quantity' => $orderProduct->getQuantity(),
-                        'product' => [
-                            'id' => $orderProduct->getProduct()->getId(),
-                            'name' => $orderProduct->getProduct()->getName(),
-                            'price' => $orderProduct->getProduct()->getPrice(),
-                        ],
-                    ];
-                }, $order->getOrderProducts()->toArray()),
-            ];
-        }
-
-        return $this->json($data, Response::HTTP_OK);
+        return $this->json($orders, Response::HTTP_OK, [], [
+            'groups' => ['order:read', 'order:item']
+        ]);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
@@ -66,27 +45,9 @@ final class OrderController extends AbstractController
             return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = [
-            'id' => $order->getId(),
-            'status' => $order->getStatus(),
-            'user' => [
-                'id' => $order->getUser()->getId(),
-                'email' => $order->getUser()->getEmail(),
-            ],
-            'orderProducts' => array_map(function ($orderProduct) {
-                return [
-                    'id' => $orderProduct->getId(),
-                    'quantity' => $orderProduct->getQuantity(),
-                    'product' => [
-                        'id' => $orderProduct->getProduct()->getId(),
-                        'name' => $orderProduct->getProduct()->getName(),
-                        'price' => $orderProduct->getProduct()->getPrice(),
-                    ],
-                ];
-            }, $order->getOrderProducts()->toArray()),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
+        return $this->json($order, Response::HTTP_OK, [], [
+            'groups' => ['order:read', 'order:item']
+        ]);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
@@ -142,10 +103,13 @@ final class OrderController extends AbstractController
                     $errorMessages[$error->getPropertyPath()] = $error->getMessage();
                 }
 
-                return $this->json([
-                    'error' => 'Validation échouée',
-                    'violations' => $errorMessages], 
-                Response::HTTP_BAD_REQUEST);
+                return $this->json(
+                    [
+                        'error' => 'Validation échouée',
+                        'violations' => $errorMessages
+                    ],
+                    Response::HTTP_BAD_REQUEST
+                );
             }
 
             $entityManager->persist($order);
@@ -156,10 +120,13 @@ final class OrderController extends AbstractController
                 'orderId' => $order->getId()
             ], Response::HTTP_CREATED);
         } catch (\Exception $e) {
-            return $this->json([
-                'message' => 'Erreur lors de la création de la commande', 
-                'error' => $e->getMessage()], 
-            Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->json(
+                [
+                    'message' => 'Erreur lors de la création de la commande',
+                    'error' => $e->getMessage()
+                ],
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
         }
     }
 

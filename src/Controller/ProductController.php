@@ -23,34 +23,17 @@ final class ProductController extends AbstractController
     {
         $products = $productRepository->findAll();
 
-        $data = [];
-        foreach ($products as $product) {
-            $data[] = [
-                'id' => $product->getId(),
-                'name' => $product->getName(),
-                'description' => $product->getDescription(),
-                'price' => $product->getPrice(),
-            ];
-        };
-
-        return $this->json($data, Response::HTTP_OK);
+        return $this->json($products, Response::HTTP_OK, [], [
+            'groups' => ['product:read']
+        ]);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(Product $product): JsonResponse
     {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $data = [
-            'id' => $product->getId(),
-            'name' => $product->getName(),
-            'description' => $product->getDescription(),
-            'price' => $product->getPrice(),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
+        return $this->json($product, Response::HTTP_OK, [], [
+            'groups' => ['product:read']
+        ]);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]

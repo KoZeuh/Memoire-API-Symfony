@@ -7,11 +7,11 @@ use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
-
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
-
 use App\Validator\Constraints\ProductCode;
+use Symfony\Component\Serializer\Attribute\Groups;
+
 
 #[ORM\Entity(repositoryClass: ProductRepository::class)]
 #[UniqueEntity('name', message: 'Nom déjà utilisé')]
@@ -20,22 +20,27 @@ class Product
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
+    #[Groups(['product:read', 'order:read'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
     #[Assert\NotBlank(message: "Le nom est obligatoire")]
+    #[Groups(['product:read', 'order:read'])]
     private ?string $name = null;
 
     #[ORM\Column(type: Types::TEXT)]
+    #[Groups(['product:read'])]
     private ?string $description = null;
 
     #[ORM\Column]
     #[Assert\NotNull(message: "Le prix est obligatoire")]
     #[Assert\Positive(message: "Le prix doit être un nombre positif")]
+    #[Groups(['product:read', 'order:read'])]
     private ?float $price = null;
 
     #[ORM\Column(length: 10, unique: true, nullable: true)]
     #[ProductCode]
+    #[Groups(['product:read'])]
     private ?string $code = null;
 
     /**

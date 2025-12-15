@@ -8,6 +8,7 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Serializer\Attribute\Groups;
 
 #[ORM\Entity(repositoryClass: OrderRepository::class)]
 #[ORM\Table(name: '`order`')]
@@ -16,14 +17,17 @@ class Order
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
+    #[Groups(['order:read'])]
     private ?int $id = null;
 
     #[ORM\ManyToOne(inversedBy: 'orders')]
     #[ORM\JoinColumn(nullable: false)]
     #[Assert\NotNull(message: "L'utilisateur est obligatoire")]
+    #[Groups(['order:read'])]
     private ?User $user = null;
 
     #[ORM\Column(length: 255)]
+    #[Groups(['order:read'])]
     private ?string $status = 'pending';
 
     #[ORM\OneToMany(targetEntity: OrderProduct::class, mappedBy: 'orders', orphanRemoval: true)]
@@ -32,6 +36,7 @@ class Order
         minMessage: "La commande doit contenir au moins {{ limit }} article"
     )]
     #[Assert\Valid]
+    #[Groups(['order:read', 'order:item'])]
     private Collection $orderProducts;
 
     public function __construct()

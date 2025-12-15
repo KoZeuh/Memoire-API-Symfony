@@ -22,7 +22,7 @@ class OrderProductFixtures extends Fixture implements DependentFixtureInterface
             for ($j = 0; $j < $productsCount; $j++) {
                 $orderProduct = new OrderProduct();
                 $orderProduct->setOrders($this->getReference(OrderFixtures::ORDER_REFERENCE . $i, Order::class));
-                $orderProduct->setProduct($this->getReference(ProductFixture::PRODUCT_REFERENCE . rand(0, 9), Product::class));
+                $orderProduct->setProduct($this->getReference(ProductFixtures::PRODUCT_REFERENCE . rand(0, 9), Product::class));
                 $orderProduct->setQuantity($faker->numberBetween(1, 10));
 
                 $manager->persist($orderProduct);
@@ -36,7 +36,7 @@ class OrderProductFixtures extends Fixture implements DependentFixtureInterface
     {
         return [
             OrderFixtures::class,
-            ProductFixture::class,
+            ProductFixtures::class,
         ];
     }
 }

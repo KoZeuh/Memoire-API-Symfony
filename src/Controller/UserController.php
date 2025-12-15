@@ -24,16 +24,9 @@ final class UserController extends AbstractController
     {
         $users = $userRepository->findAll();
 
-        $data = [];
-        foreach ($users as $user) {
-            $data[] = [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'roles' => $user->getRoles(),
-            ];
-        };
-
-        return $this->json($data, Response::HTTP_OK);
+        return $this->json($users, Response::HTTP_OK, [], [
+            'groups' => ['user:read']
+        ]);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
@@ -44,18 +37,14 @@ final class UserController extends AbstractController
             return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $data = [
-            'id' => $user->getId(),
-            'email' => $user->getEmail(),
-            'roles' => $user->getRoles(),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
+        return $this->json($user, Response::HTTP_OK, [], [
+            'groups' => ['user:read']
+        ]);
     }
 
     #[Route('/login', methods: ['POST'])]
     public function login(): JsonResponse
-        {
+    {
         // Cette méthode ne sera jamais appelée car l'authentification est gérée par le firewall
         // Elle sert uniquement de point d'entrée pour la route /user/login
         // Le firewall 'login' dans security.yaml intercepte cette route et gère l'authentification
@@ -121,9 +110,9 @@ final class UserController extends AbstractController
         if ($payload->has('email')) {
             $user->setEmail($payload->getString('email'));
         }
-        if ($payload->has('roles')) {
-            $user->setRoles($payload->get('roles'));
-        }
+        // if ($payload->has('roles')) {
+        //     $user->setRoles($payload->get('roles'));
+        // }
         if ($payload->has('password')) {
             $hashedPassword = $passwordHasher->hashPassword($user, $payload->getString('password'));
             $user->setPassword($hashedPassword);

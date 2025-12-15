@@ -6,6 +6,7 @@ use App\Repository\OrderProductRepository;
 use Doctrine\ORM\Mapping as ORM;
 
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Serializer\Attribute\Groups;
 
 #[ORM\Entity(repositoryClass: OrderProductRepository::class)]
 class OrderProduct
@@ -13,6 +14,7 @@ class OrderProduct
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
+    #[Groups(['order:item'])]
     private ?int $id = null;
 
     #[ORM\ManyToOne(inversedBy: 'orderProducts')]
@@ -21,11 +23,13 @@ class OrderProduct
 
     #[ORM\ManyToOne(inversedBy: 'orderProducts')]
     #[Assert\NotNull(message: "Un produit est obligatoire")]
+    #[Groups(['order:item'])]
     private ?Product $product = null;
 
     #[ORM\Column]
     #[Assert\NotNull(message: "La quantité est obligatoire")]
     #[Assert\Positive(message: "La quantité doit être un nombre positif")]
+    #[Groups(['order:item'])]
     private ?int $quantity = null;
 
     public function getId(): ?int
