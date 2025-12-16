@@ -10,10 +10,11 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
+use Symfony\Component\Serializer\SerializerInterface;
+
 
 #[Route('/product', name: 'app_product_')]
 final class ProductController extends AbstractController
@@ -38,29 +39,8 @@ final class ProductController extends AbstractController
 
     #[Route('', name: 'create', methods: ['POST'])]
     #[IsGranted('ROLE_ADMIN')]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
+    public function create(#[MapRequestPayload] Product $product, EntityManagerInterface $entityManager): JsonResponse
     {
-        $payload = $request->getPayload();
-
-        $product = new Product();
-        $product->setName($payload->get('name'));
-        $product->setDescription($payload->get('description'));
-        $product->setPrice($payload->get('price'));
-        $product->setCode($payload->get('code'));
-
-        $errors = $validator->validate($product);
-
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
-        }
 
         $entityManager->persist($product);
         $entityManager->flush();
@@ -73,22 +53,14 @@ final class ProductController extends AbstractController
 
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
     #[IsGranted('ROLE_ADMIN')]
-    public function update(Product $product, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
+    public function update(Product $product, Request $request, SerializerInterface $serializer, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
-        $payload = $request->getPayload();
-
-        if ($payload->has('name')) {
-            $product->setName($payload->getString('name'));
-        }
-        if ($payload->has('description')) {
-            $product->setDescription($payload->getString('description'));
-        }
-        if ($payload->has('price')) {
-            $product->setPrice($payload->get('price'));
-        }
-        if ($payload->has('code')) {
-            $product->setCode($payload->getString('code'));
-        }
+       $serializer->deserialize(
+        $request->getContent(),
+        Product::class,
+        'json',
+        ['object_to_populate' => $product] 
+       );
 
         $errors = $validator->validate($product);
 
@@ -113,7 +85,7 @@ final class ProductController extends AbstractController
     #[IsGranted('ROLE_SUPER_ADMIN')]
     public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
     {
-        
+
         $entityManager->remove($product);
         $entityManager->flush();
 
