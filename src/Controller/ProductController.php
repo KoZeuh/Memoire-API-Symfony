@@ -75,10 +75,6 @@ final class ProductController extends AbstractController
     #[IsGranted('ROLE_ADMIN')]
     public function update(Product $product, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
         $payload = $request->getPayload();
 
         if ($payload->has('name')) {
@@ -117,10 +113,7 @@ final class ProductController extends AbstractController
     #[IsGranted('ROLE_SUPER_ADMIN')]
     public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
     {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
+        
         $entityManager->remove($product);
         $entityManager->flush();
 

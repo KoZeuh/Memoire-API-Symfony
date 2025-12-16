@@ -23,48 +23,17 @@ final class OrderProductController extends AbstractController
     {
         $orderProducts = $orderProductRepository->findAll();
 
-        $data = [];
-        foreach ($orderProducts as $orderProduct) {
-            $data[] = [
-                'id' => $orderProduct->getId(),
-                'quantity' => $orderProduct->getQuantity(),
-                'order' => [
-                    'id' => $orderProduct->getOrders()->getId(),
-                    'status' => $orderProduct->getOrders()->getStatus(),
-                ],
-                'product' => [
-                    'id' => $orderProduct->getProduct()->getId(),
-                    'name' => $orderProduct->getProduct()->getName(),
-                    'price' => $orderProduct->getProduct()->getPrice(),
-                ],
-            ];
-        };
-
-        return $this->json($data, Response::HTTP_OK);
+       return $this->json($orderProducts, Response::HTTP_OK, [], [
+            'groups' => ['order:item']
+        ]);
     }
 
     #[Route('/{id}', name: 'show', methods: ['GET'])]
     public function show(OrderProduct $orderProduct): JsonResponse
     {
-        if (!$orderProduct) {
-            return $this->json(['error' => 'Produit de commande non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $data = [
-            'id' => $orderProduct->getId(),
-            'quantity' => $orderProduct->getQuantity(),
-            'order' => [
-                'id' => $orderProduct->getOrders()->getId(),
-                'status' => $orderProduct->getOrders()->getStatus(),
-            ],
-            'product' => [
-                'id' => $orderProduct->getProduct()->getId(),
-                'name' => $orderProduct->getProduct()->getName(),
-                'price' => $orderProduct->getProduct()->getPrice(),
-            ],
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
+       return $this->json($orderProduct, Response::HTTP_OK, [], [
+            'groups' => ['order:item']
+        ]);
     }
 
     #[Route('', name: 'create', methods: ['POST'])]
@@ -117,10 +86,6 @@ final class OrderProductController extends AbstractController
     #[Route('/{id}', name: 'update', methods: ['PUT'])]
     public function update(OrderProduct $orderProduct, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator,OrderRepository $orderRepository, ProductRepository $productRepository): JsonResponse
     {
-        if (!$orderProduct) {
-            return $this->json(['error' => 'Produit de commande non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
         $payload = $request->getPayload();
 
         if ($payload->has('order_id')) {
@@ -163,10 +128,6 @@ final class OrderProductController extends AbstractController
     #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
     public function delete(OrderProduct $orderProduct, EntityManagerInterface $entityManager): JsonResponse
     {
-        if (!$orderProduct) {
-            return $this->json(['error' => 'Produit de commande non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
         $entityManager->remove($orderProduct);
         $entityManager->flush();
 

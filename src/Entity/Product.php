@@ -20,12 +20,12 @@ class Product
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
-    #[Groups(['product:read', 'order:read'])]
+    #[Groups(['product:read', 'order:read', 'order:item'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
     #[Assert\NotBlank(message: "Le nom est obligatoire")]
-    #[Groups(['product:read', 'order:read'])]
+    #[Groups(['product:read', 'order:read', 'order:item'])]
     private ?string $name = null;
 
     #[ORM\Column(type: Types::TEXT)]
@@ -35,7 +35,7 @@ class Product
     #[ORM\Column]
     #[Assert\NotNull(message: "Le prix est obligatoire")]
     #[Assert\Positive(message: "Le prix doit être un nombre positif")]
-    #[Groups(['product:read', 'order:read'])]
+    #[Groups(['product:read', 'order:read', 'order:item'])]
     private ?float $price = null;
 
     #[ORM\Column(length: 10, unique: true, nullable: true)]
@@ -128,7 +128,6 @@ class Product
     public function removeOrderProduct(OrderProduct $orderProduct): static
     {
         if ($this->orderProducts->removeElement($orderProduct)) {
-            // set the owning side to null (unless already changed)
             if ($orderProduct->getProduct() === $this) {
                 $orderProduct->setProduct(null);
             }
