@@ -87,7 +87,7 @@ final class OrderProductController extends AbstractController
             ]
         );
 
-       $errors = $validator->validate($orderProduct);
+        $errors = $validator->validate($orderProduct);
         if (count($errors) > 0) {
             return $this->json($errors, Response::HTTP_BAD_REQUEST);
         }
@@ -95,5 +95,14 @@ final class OrderProductController extends AbstractController
         $entityManager->flush();
 
         return $this->json(['message' => 'Ligne de commande mise à jour'], Response::HTTP_OK);
+    }
+
+    #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
+    public function delete(OrderProduct $orderProduct, EntityManagerInterface $entityManager): JsonResponse
+    {
+        $entityManager->remove($orderProduct);
+        $entityManager->flush();
+
+        return $this->json(['message' => 'Produit de commande supprimé avec succès'], Response::HTTP_OK);
     }
 }
