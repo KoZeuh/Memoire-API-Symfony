@@ -19,6 +19,12 @@ use Symfony\Component\Serializer\SerializerInterface;
 #[Route('/product', name: 'app_product_')]
 final class ProductController extends AbstractController
 {
+    #[Route('/test-error', name: 'test', methods: ['GET'])]
+    public function testError(): Response
+    {
+        throw new \RuntimeException("Ceci est une erreur de test !");
+    }
+
     #[Route('/', name: 'list', methods: ['GET'])]
     public function list(ProductRepository $productRepository): JsonResponse
     {
@@ -55,12 +61,12 @@ final class ProductController extends AbstractController
     #[IsGranted('ROLE_ADMIN')]
     public function update(Product $product, Request $request, SerializerInterface $serializer, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
     {
-       $serializer->deserialize(
-        $request->getContent(),
-        Product::class,
-        'json',
-        ['object_to_populate' => $product] 
-       );
+        $serializer->deserialize(
+            $request->getContent(),
+            Product::class,
+            'json',
+            ['object_to_populate' => $product]
+        );
 
         $errors = $validator->validate($product);
 
