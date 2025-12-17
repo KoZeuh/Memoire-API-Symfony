@@ -29,7 +29,7 @@ class OrderProduct
     #[ORM\Column]
     #[Assert\NotNull(message: "La quantité est obligatoire")]
     #[Assert\Positive(message: "La quantité doit être un nombre positif")]
-    #[Groups(['order:item'])]
+    #[Groups(['order:item', 'order:item:update'])]
     private ?int $quantity = null;
 
     public function getId(): ?int

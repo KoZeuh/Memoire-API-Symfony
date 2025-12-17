@@ -27,7 +27,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(length: 180)]
     #[Assert\NotBlank(message: "L'email est obligatoire")]
     #[Assert\Email(message: "L'email {{ value }} n'est pas valide")]
-    #[Groups(['user:read', 'order:read'])]
+    #[Groups(['user:read', 'order:read', 'user:create', 'user:update'])]
     private ?string $email = null;
 
     /**
@@ -43,6 +43,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         min: 8,
         minMessage: 'Le mot de passe doit contenir au moins {{ limit }} caractères',
     )]
+    #[Groups(['user:create', 'user:update'])]
     private ?string $password = null;
 
     #[ORM\OneToMany(targetEntity: Order::class, mappedBy: 'user', orphanRemoval: true)]

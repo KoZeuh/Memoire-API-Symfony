@@ -27,7 +27,7 @@ class Order
     private ?User $user = null;
 
     #[ORM\Column(length: 255)]
-    #[Groups(['order:read'])]
+    #[Groups(['order:read', 'order:update'])]
     private ?string $status = 'pending';
 
     #[ORM\OneToMany(targetEntity: OrderProduct::class, mappedBy: 'orders', orphanRemoval: true)]
