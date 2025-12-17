@@ -43,6 +43,10 @@ class Product
     #[Groups(['product:read'])]
     private ?string $code = null;
 
+    #[ORM\Column(length: 255, nullable: true)]
+    #[Groups(['product:read', 'order:item'])]
+    private ?string $image = null;
+
     /**
      * @var Collection<int, OrderProduct>
      */
@@ -132,6 +136,18 @@ class Product
                 $orderProduct->setProduct(null);
             }
         }
+
+        return $this;
+    }
+
+    public function getImage(): ?string
+    {
+        return $this->image;
+    }
+
+    public function setImage(?string $image): static
+    {
+        $this->image = $image;
 
         return $this;
     }

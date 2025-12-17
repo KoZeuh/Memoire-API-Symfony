@@ -14,7 +14,9 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Serializer\SerializerInterface;
-
+use App\Dto\ProductCreateDto;
+use App\Service\FileUploader;
+use Symfony\Component\Process\ProcessUtils;
 
 #[Route('/product', name: 'app_product_')]
 final class ProductController extends AbstractController
@@ -45,15 +47,35 @@ final class ProductController extends AbstractController
 
     #[Route('', name: 'create', methods: ['POST'])]
     #[IsGranted('ROLE_ADMIN')]
-    public function create(#[MapRequestPayload] Product $product, EntityManagerInterface $entityManager): JsonResponse
-    {
+    public function create(
+        #[MapRequestPayload] ProductCreateDto $dto,
+        Request $request,
+        EntityManagerInterface $entityManager,
+        FileUploader $fileUploader
+    ): JsonResponse {
+
+        $imageFile = $request->files->get('image');
+        if ($imageFile) {
+            $dto->image = $imageFile;
+        }
+
+        $product = new Product();
+        $product->setName($dto->name);
+        $product->setPrice($dto->price);
+        $product->setDescription($dto->description);
+
+         if ($dto->image) {
+            $filename = $fileUploader->upload($dto->image);
+            $product->setImage($filename);
+        }
 
         $entityManager->persist($product);
         $entityManager->flush();
 
         return $this->json([
             'message' => 'Produit créé avec succès',
-            'id' => $product->getId()
+            'id' => $product->getId(),
+            'image' => $product->getImage()
         ], Response::HTTP_CREATED);
     }
 
