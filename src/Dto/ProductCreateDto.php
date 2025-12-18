@@ -18,7 +18,6 @@ class ProductCreateDto
     #[Assert\NotBlank(message: "La description est obligatoire")]
     public ?string $description = null;
 
-    // C'est ici que la magie opère : on autorise un objet UploadedFile
     #[Assert\File(
         maxSize: "2M",
         mimeTypes: ["image/jpeg", "image/png", "image/webp"],
