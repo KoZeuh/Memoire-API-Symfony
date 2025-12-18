@@ -112,7 +112,7 @@ Essayez d'appeler une URL qui n'existe pas, par exemple:
 
 
 Le résultat attendu devrait être le suivant.
-```
+```JSON
 {
   "status": 404",
   "message": "Ressource introuvable."
