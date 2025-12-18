@@ -16,7 +16,7 @@ use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Serializer\SerializerInterface;
 use App\Dto\ProductCreateDto;
 use App\Service\FileUploader;
-use Symfony\Component\Process\ProcessUtils;
+use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 
 #[Route('/product', name: 'app_product_')]
 final class ProductController extends AbstractController
@@ -79,16 +79,33 @@ final class ProductController extends AbstractController
         ], Response::HTTP_CREATED);
     }
 
-    #[Route('/{id}', name: 'update', methods: ['PUT'])]
+    #[Route('/{id}', name: 'update', methods: ['PUT', 'POST'])]
     #[IsGranted('ROLE_ADMIN')]
-    public function update(Product $product, Request $request, SerializerInterface $serializer, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
-    {
-        $serializer->deserialize(
-            $request->getContent(),
-            Product::class,
-            'json',
-            ['object_to_populate' => $product]
-        );
+    public function update(
+        Product $product,
+        Request $request,
+        SerializerInterface $serializer,
+        EntityManagerInterface $entityManager,
+        ValidatorInterface $validator,
+        FileUploader $fileUploader
+    ): JsonResponse {
+
+        $imageFile = $request->files->get('image');
+        $jsonData = $request->request->get('data');
+        
+        if ($jsonData) {
+            $serializer->deserialize(
+                $jsonData,
+                Product::class,
+                'json',
+                ['object_to_populate' => $product]
+            );
+        }
+
+        if ($imageFile) {
+            $filename = $fileUploader->upload($imageFile);
+            $product->setImage($filename);
+        }
 
         $errors = $validator->validate($product);
 
