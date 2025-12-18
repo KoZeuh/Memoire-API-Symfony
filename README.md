@@ -79,6 +79,11 @@ Nous utilisons donc des DTOs pour valider la structure reçue avant de traiter l
 
 ##Création des Dtos
 
+Installation de cette bilbiothèque
+```bash
+composer require phpdocumentor/reflection-docblock
+```
+
 A. Le modèle d'un article (OrderItemDto)
 Ce DTO représente une ligne dans la liste des produits d'une commande.
 
