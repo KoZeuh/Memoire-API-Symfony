@@ -114,10 +114,10 @@ Essayez d'appeler une URL qui n'existe pas, par exemple:
 Le résultat attendu devrait être le suivant.
 ```
 {
-  "status": 404,
+  "status": 404",
   "message": "Ressource introuvable."
 }
-```"
+```
 
 
 
