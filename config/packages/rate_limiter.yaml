@@ -1,10 +1,17 @@
 framework:
     rate_limiter:
-        anonymous_api:
+        two_per_minute:
             policy: 'fixed_window'
-            limit: 100
-            interval: '60 minutes'
-        authenticated_api:
-            policy: 'token_bucket'
             limit: 2
-            rate: { interval: '15 minutes', amount: 2 }
+            interval: '1 minute'
+        five_per_hour:
+            policy: 'fixed_window'
+            limit: 5
+            interval: '1 hour'
+        product_list_route:
+            policy: 'compound'
+            limiters: [two_per_minute, five_per_hour]
+        create_route:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 minute'
