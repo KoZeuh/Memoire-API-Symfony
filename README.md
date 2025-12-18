@@ -1,408 +1,174 @@
-Voici la correction de l'exercice sur la mise en place d'un système complet d'autorisation. (Chapitre 2 - Partie 5)
+Voici la correction de l'exercice sur la mise en place des gestions de fichiers. (Chapitre 3 - Partie 3)
 
-Etape 1 (Configurer la hiérarchie des rôles) :
 
-```yml
-# config/packages/security.yaml
-
-security:
-    role_hierarchy:
-		ROLE_ADMIN: ROLE_USER
-		ROLE_SUPER_ADMIN: [ROLE_ADMIN, ROLE_ALLOWED_TO_SWITCH]
+## Déclarer un dossier d'upload
+Avant de pouvoir stocker un fichier, Symfony doit savoir où le placer. Dans `config/services.yaml, on ajoute un paramètre global qui représente le chemin vers le dossier public des uploads.
+```yaml
+parameters:
+    upload_directory: '%kernel.project_dir%/public/uploads'
 ```
 
-Etape 2 (Création du Voter) :
+### Créer le service FileUploader
+
+Plutôt que d’écrire la logique dans le contrôleur, on crée un service. Nous allons utiliser le `SluggerInterface` de Symfony pour nettoyer le nom du fichier, c'est une sécurité indispensable. 
+
+Créez le fichier : `src/Service/FileUploader.php`
 
 ```php
-# src/Security/Voter/OrderVoter
-
-namespace App\Security\Voter;
-
-use App\Entity\Order;
-use App\Entity\User;
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
-use Symfony\Component\Security\Core\Authorization\Voter\Voter;
-
-class OrderVoter extends Voter
-{
-    public const LIST = 'ORDER_LIST';
-    public const SHOW = 'ORDER_SHOW';
-    public const EDIT = 'ORDER_EDIT';
-    public const DELETE = 'ORDER_DELETE';
-
-    protected function supports(string $attribute, mixed $subject): bool
-    {
-        if (!in_array($attribute, [self::LIST, self::SHOW, self::EDIT, self::DELETE], true)) {
-            return false;
-        }
-
-        // LIST, EDIT, DELETE n'a pas besoin de subject (Dans ce cas de figure actuel)
-        // (Uniquement SHOW nécessite un subject Order car on vérifie si l'utilisateur peut voir une commande dont il est l'auteur)
-        if ($attribute === self::LIST || $attribute === self::EDIT || $attribute === self::DELETE) {
-            return true;
-        }
-
-        // Les autres actions nécessitent un objet Order
-        if (!$subject instanceof Order) {
-            return false;
-        }
-
-        return true;
-    }
-
-    protected function voteOnAttribute(string $attribute, mixed $subject, TokenInterface $token): bool
-    {
-        $user = $token->getUser();
-
-        if (!$user instanceof User) {
-            return false;
-        }
-
-        return match($attribute) {
-            self::LIST => $this->canShowList($user),
-            self::SHOW => $this->canShow($user, $subject),
-            self::EDIT => $this->canEdit($user),
-            self::DELETE => $this->canDelete($user),
-            default => false,
-        };
-    }
-
-    private function canShowList(User $user): bool
-    {
-        
-        return in_array('ROLE_ADMIN', $user->getRoles());
-    }
-
-    private function canShow(User $user, Order $order): bool
-    {
-        return in_array('ROLE_ADMIN', $user->getRoles()) || $order->getUser() === $user;
-    }
-
-    private function canEdit(User $user): bool
-    {
-        return in_array('ROLE_ADMIN', $user->getRoles());
-    }
-
-    private function canDelete(User $user): bool
-    {
-        return in_array('ROLE_SUPER_ADMIN', $user->getRoles());
-    }
-}
-
-```
-
-Etape 3 (Implémenter le voter dans le contrôleur) :
-
-```php
-# src/Controller/OrderController.php
-
 <?php
 
-namespace App\Controller;
+namespace App\Service;
 
-use App\Entity\Order;
-use App\Entity\OrderProduct;
+use Symfony\Component\HttpFoundation\File\Exception\FileException;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\String\Slugger\SluggerInterface;
 
-use App\Repository\OrderRepository;
-use App\Repository\UserRepository;
-use App\Repository\ProductRepository;
-
-use Doctrine\ORM\EntityManagerInterface;
-
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\HttpFoundation\JsonResponse;
-
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-
-use Symfony\Component\Validator\Validator\ValidatorInterface;
-
-use Symfony\Component\Security\Http\Attribute\IsGranted;
-
-#[Route('/order', name: 'app_order_')]
-#[IsGranted('IS_AUTHENTICATED_FULLY')]
-final class OrderController extends AbstractController
+class FileUploader
 {
-    #[Route('/', name: 'list', methods: ['GET'])]
-    #[IsGranted('ORDER_LIST')]
-    public function list(OrderRepository $orderRepository): JsonResponse
-    {
-        $orders = $orderRepository->findAll();
-
-        $data = [];
-        foreach ($orders as $order) {
-            $data[] = [
-                'id' => $order->getId(),
-                'status' => $order->getStatus(),
-                'user' => [
-                    'id' => $order->getUser()->getId(),
-                    'email' => $order->getUser()->getEmail(),
-                ],
-                'orderProducts' => array_map(function ($orderProduct) {
-                    return [
-                        'id' => $orderProduct->getId(),
-                        'quantity' => $orderProduct->getQuantity(),
-                        'product' => [
-                            'id' => $orderProduct->getProduct()->getId(),
-                            'name' => $orderProduct->getProduct()->getName(),
-                            'price' => $orderProduct->getProduct()->getPrice(),
-                        ],
-                    ];
-                }, $order->getOrderProducts()->toArray()),
-            ];
-        }
-
-        return $this->json($data, Response::HTTP_OK);
+    // On injecte le dossier cible et le Slugger (outil de nettoyage de texte)
+    public function __construct(
+        private string $targetDirectory,
+        private SluggerInterface $slugger
+    ) {
     }
 
-    #[Route('/{id}', name: 'show', methods: ['GET'])]
-    #[IsGranted('ORDER_SHOW', subject: 'order')]
-    public function show(Order $order): JsonResponse
+    public function upload(UploadedFile $file): string
     {
-        if (!$order) {
-            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
-        }
+        // Récupérer le nom de fichier original (sans l'extension)
+        $originalFilename = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        
+        // Sécuriser le nom (suppression des accents, espaces, caractères spéciaux)
+        $safeFilename = $this->slugger->slug($originalFilename);
+        
+        // Générer un nom unique pour éviter d'écraser un fichier existant
+        $fileName = $safeFilename.'-'.uniqid().'.'.$file->guessExtension();
 
-        $data = [
-            'id' => $order->getId(),
-            'status' => $order->getStatus(),
-            'user' => [
-                'id' => $order->getUser()->getId(),
-                'email' => $order->getUser()->getEmail(),
-            ],
-            'orderProducts' => array_map(function ($orderProduct) {
-                return [
-                    'id' => $orderProduct->getId(),
-                    'quantity' => $orderProduct->getQuantity(),
-                    'product' => [
-                        'id' => $orderProduct->getProduct()->getId(),
-                        'name' => $orderProduct->getProduct()->getName(),
-                        'price' => $orderProduct->getProduct()->getPrice(),
-                    ],
-                ];
-            }, $order->getOrderProducts()->toArray()),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository, ProductRepository $productRepository): JsonResponse
-    {
+        // Déplacement du fichier
         try {
-            $payload = $request->getPayload();
-            $user = $userRepository->find($payload->get('userId'));
-
-            if (!$user) {
-                return $this->json(['message' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-            }
-
-            $order = new Order();
-            $order->setUser($user);
-
-            foreach ($payload->all()['products'] as $index => $productData) {
-                $product = $productRepository->find($productData['id']);
-
-                if (!$product) {
-                    return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-                }
-
-                $orderProduct = new OrderProduct();
-                $orderProduct->setOrders($order);
-                $orderProduct->setProduct($product);
-                $orderProduct->setQuantity((int)$productData['quantity']);
-
-                $order->addOrderProduct($orderProduct);
-
-                $errors = $validator->validate($orderProduct);
-
-                if (count($errors) > 0) {
-                    $errorMessages = [];
-                    foreach ($errors as $error) {
-                        $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-                    }
-
-                    return $this->json([
-                        'error' => 'Validation échouée',
-                        'violations' => $errorMessages
-                    ], Response::HTTP_BAD_REQUEST);
-                }
-
-                $entityManager->persist($orderProduct);
-            }
-
-            $errors = $validator->validate($order);
-
-            if (count($errors) > 0) {
-                $errorMessages = [];
-                foreach ($errors as $error) {
-                    $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-                }
-
-                return $this->json([
-                    'error' => 'Validation échouée',
-                    'violations' => $errorMessages], 
-                Response::HTTP_BAD_REQUEST);
-            }
-
-            $entityManager->persist($order);
-            $entityManager->flush();
-
-            return $this->json([
-                'message' => 'Commande créée avec succès',
-                'orderId' => $order->getId()
-            ], Response::HTTP_CREATED);
-        } catch (\Exception $e) {
-            return $this->json([
-                'message' => 'Erreur lors de la création de la commande', 
-                'error' => $e->getMessage()], 
-            Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    #[IsGranted('ORDER_EDIT')]
-    public function update(Order $order, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository): JsonResponse
-    {
-        if (!$order) {
-            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
+            $file->move($this->targetDirectory, $fileName);
+        } catch (FileException $e) {
+            // Si le dossier n'existe pas ou n'est pas accessible
+            throw new \RuntimeException("Erreur lors de l'upload du fichier");
         }
 
-        $payload = $request->getPayload();
-
-        if ($payload->has('user_id')) {
-            $user = $userRepository->find($payload->get('user_id'));
-
-            if (!$user) {
-                return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-            }
-
-            $order->setUser($user);
-        }
-        if ($payload->has('status')) {
-            $order->setStatus($payload->getString('status'));
-        }
-
-        $errors = $validator->validate($order);
-
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Commande mise à jour avec succès'], Response::HTTP_OK);
-    }
-
-    #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('ORDER_DELETE')]
-    public function delete(Order $order, EntityManagerInterface $entityManager): JsonResponse
-    {
-        if (!$order) {
-            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
-        }
-
-        $entityManager->remove($order);
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Commande supprimée avec succès'], Response::HTTP_OK);
+        return $fileName; // On retourne juste le nom 
     }
 }
-
-
 ```
 
-Etape 4 (Implémenter les restrictions dans le contrôleur) :
+Ensuite, on configure ce service dans config/services.yaml pour lui passer le dossier d'upload défini à l'étape 1 :
+```yaml
+# config/services.yaml
+services:
+    # ...
+    
+    # Injection de l'argument $targetDirectory dans notre service
+    App\Service\FileUploader:
+        arguments:
+            $targetDirectory: '%upload_directory%'
+```
 
+
+### Mettre à jour l'entité Product
 ```php
-# src/Controller/ProductController.php
+#[ORM\Column(length: 255, nullable: true)]
+    #[Groups(['product:read', 'order:item'])] // Important pour que l'API renvoie le nom de l'image
+    private ?string $image = null;
 
-namespace App\Controller;
+    // ... getters et setters ...
 
-use App\Entity\Product;
-use App\Repository\ProductRepository;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-
-use Symfony\Component\Security\Http\Attribute\IsGranted;
-
-use Symfony\Component\Validator\Validator\ValidatorInterface;
-
-#[Route('/product', name: 'app_product_')]
-final class ProductController extends AbstractController
-{
-    #[Route('/', name: 'list', methods: ['GET'])]
-    public function list(ProductRepository $productRepository): JsonResponse
+    public function getImage(): ?string
     {
-        $products = $productRepository->findAll();
-
-        $data = [];
-        foreach ($products as $product) {
-            $data[] = [
-                'id' => $product->getId(),
-                'name' => $product->getName(),
-                'description' => $product->getDescription(),
-                'price' => $product->getPrice(),
-            ];
-        };
-
-        return $this->json($data, Response::HTTP_OK);
+        return $this->image;
     }
 
-    #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(Product $product): JsonResponse
+    public function setImage(?string $image): static
     {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
+        $this->image = $image;
+
+        return $this;
+    }
+```
+
+### Mettre à jour la base de données
+
+```Bash
+php bin/console make:migration
+php bin/console doctrine:migrations:migrate
+```
+
+### Créer un DTO pour l'upload 
+Puisque nous utilisons la validation automatique et le mapping de Symfony (MapRequestPayload), mais que notre entité ne peut pas recevoir directement un fichier (elle attend une string), nous allons créer un DTO.
+
+Pré-requis : Pour que la validation des fichiers fonctionne (#[Assert\File]), vous devez installer le composant Mime :
+```Bash
+composer require symfony/mime
+```
+
+Créez le fichier `src/Dto/ProductCreateDto.php` :
+```php
+<?php
+namespace App\Dto;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\Validator\Constraints as Assert;
+
+class ProductCreateDto
+{
+    #[Assert\NotBlank(message: "Le nom est obligatoire")]
+    #[Assert\Length(min: 3, minMessage: "Le nom doit faire au moins 3 caractères")]
+    public ?string $name = null;
+
+    #[Assert\NotNull(message: "Le prix est obligatoire")]
+    #[Assert\Positive(message: "Le prix doit être positif")]
+    public ?float $price = null;
+
+    #[Assert\NotBlank(message: "La description est obligatoire")]
+    public ?string $description = null;
+
+    // C'est ici que la magie opère : on autorise un objet UploadedFile
+    #[Assert\File(
+        maxSize: "2M",
+        mimeTypes: ["image/jpeg", "image/png", "image/webp"],
+        mimeTypesMessage: "Veuillez uploader une image valide (JPG, PNG ou WEBP)"
+    )]
+    public ?UploadedFile $image = null;
+}
+```
+
+### Mettre à jour le contrôleur
+Maintenant, nous pouvons adapter le ProductController.
+
+Attention technique : Le Serializer de Symfony est très fort pour le JSON, mais il ne sait pas toujours faire le lien automatique entre un champ de formulaire (fichier) et une propriété de DTO en `multipart/form-data`. Nous devons donc injecter l'objet Request pour récupérer le fichier manuellement et le donner au DTO.
+
+Modifiez la méthode `create dans le contrôleur Product :
+```php
+#[Route('', name: 'create', methods: ['POST'])]
+    #[IsGranted('ROLE_ADMIN')]
+    public function create(
+        #[MapRequestPayload] ProductCreateDto $dto,
+        Request $request, // <--- Indispensable pour récupérer le fichier binaire
+        EntityManagerInterface $entityManager,
+        FileUploader $fileUploader
+    ): JsonResponse {
+        
+        // Le Serializer ne le fait pas toujours automatiquement avec le multipart/form-data
+        // On force l'injection du fichier dans le DTO
+        $imageFile = $request->files->get('image');
+        if ($imageFile) {
+            $dto->image = $imageFile;
         }
 
-        $data = [
-            'id' => $product->getId(),
-            'name' => $product->getName(),
-            'description' => $product->getDescription(),
-            'price' => $product->getPrice(),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('', name: 'create', methods: ['POST'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
-    {
-        $payload = $request->getPayload();
-
+        // Création de l'entité et transfert des données
         $product = new Product();
-        $product->setName($payload->get('name'));
-        $product->setDescription($payload->get('description'));
-        $product->setPrice($payload->get('price'));
-        $product->setCode($payload->get('code'));
+        $product->setName($dto->name);
+        $product->setPrice($dto->price);
+        $product->setDescription($dto->description);
 
-        $errors = $validator->validate($product);
-
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
+        // Gestion de l'upload via le service
+        if ($dto->image) {
+            // Le service gère le renommage et le déplacement
+            $filename = $fileUploader->upload($dto->image);
+            $product->setImage($filename);
         }
 
         $entityManager->persist($product);
@@ -410,639 +176,33 @@ final class ProductController extends AbstractController
 
         return $this->json([
             'message' => 'Produit créé avec succès',
-            'id' => $product->getId()
+            'id' => $product->getId(),
+            'image' => $product->getImage()
         ], Response::HTTP_CREATED);
     }
-
-    #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function update(Product $product, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
-    {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $payload = $request->getPayload();
-
-        if ($payload->has('name')) {
-            $product->setName($payload->getString('name'));
-        }
-        if ($payload->has('description')) {
-            $product->setDescription($payload->getString('description'));
-        }
-        if ($payload->has('price')) {
-            $product->setPrice($payload->get('price'));
-        }
-        if ($payload->has('code')) {
-            $product->setCode($payload->getString('code'));
-        }
-
-        $errors = $validator->validate($product);
-
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Produit mis à jour avec succès'], Response::HTTP_OK);
-    }
-
-    #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
-    public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
-    {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $entityManager->remove($product);
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Produit supprimé avec succès'], Response::HTTP_OK);
-    }
-}
-
 ```
 
-Etape 5 (Implémenter les restrictions dans le contrôleur) :
-
-```php
-# src/Controller/UserController.php
-
-namespace App\Controller;
-
-use App\Entity\User;
-use App\Repository\UserRepository;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
-
-use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Component\Security\Http\Attribute\IsGranted;
-
-#[Route('/user', name: 'app_user_')]
-final class UserController extends AbstractController
-{
-    #[Route('/', name: 'list', methods: ['GET'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function list(UserRepository $userRepository): JsonResponse
-    {
-        $users = $userRepository->findAll();
-
-        $data = [];
-        foreach ($users as $user) {
-            $data[] = [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'roles' => $user->getRoles(),
-            ];
-        };
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('/{id}', name: 'show', methods: ['GET'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function show(User $user): JsonResponse
-    {
-        if (!$user) {
-            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $data = [
-            'id' => $user->getId(),
-            'email' => $user->getEmail(),
-            'roles' => $user->getRoles(),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('/login', methods: ['POST'])]
-    public function login(): JsonResponse
-        {
-        // Cette méthode ne sera jamais appelée car l'authentification est gérée par le firewall
-        // Elle sert uniquement de point d'entrée pour la route /user/login
-        // Le firewall 'login' dans security.yaml intercepte cette route et gère l'authentification
-        // En cas de succès, lexik_jwt_authentication.handler.authentication_success retourne le token
-        return $this->json([
-            'message' => 'Cette route est gérée par le firewall pour l\'authentification.'
-        ]);
-    }
-
-    #[Route('/register', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserPasswordHasherInterface $passwordHasher): JsonResponse
-    {
-        try {
-            $payload = $request->getPayload();
-
-            $user = new User();
-            $user->setEmail($payload->get('email'));
-
-            // Validation AVANT le hashage du mot de passe
-            $plainPassword = $payload->get('password');
-            $user->setPassword($plainPassword); // Temporairement pour la validation
-
-            $errors = $validator->validate($user);
-
-            if (count($errors) > 0) {
-                $errorMessages = [];
-                foreach ($errors as $error) {
-                    $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-                }
-
-                return $this->json([
-                    'message' => 'Validation échouée',
-                    'violations' => $errorMessages
-                ], Response::HTTP_BAD_REQUEST);
-            }
-
-            // Hash le mot de passe après validation
-            $hashedPassword = $passwordHasher->hashPassword($user, $plainPassword);
-            $user->setPassword($hashedPassword);
-
-            $entityManager->persist($user);
-            $entityManager->flush();
-
-            return $this->json(['message' => 'Utilisateur créé avec succès'], Response::HTTP_CREATED);
-        } catch (\Exception $e) {
-            return $this->json([
-                'message' => 'Erreur lors de la création de l\'utilisateur',
-                'error' => $e->getMessage()
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function update(User $user, Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher, ValidatorInterface $validator): JsonResponse
-    {
-        if (!$user) {
-            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $payload = $request->getPayload();
-
-        if ($payload->has('email')) {
-            $user->setEmail($payload->getString('email'));
-        }
-        if ($payload->has('roles')) {
-            $user->setRoles($payload->get('roles'));
-        }
-        if ($payload->has('password')) {
-            $hashedPassword = $passwordHasher->hashPassword($user, $payload->getString('password'));
-            $user->setPassword($hashedPassword);
-        }
-
-        $errors = $validator->validate($user);
-
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'message' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Utilisateur mis à jour avec succès'], Response::HTTP_OK);
-    }
-
-    #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
-    public function delete(User $user, EntityManagerInterface $entityManager): JsonResponse
-    {
-        if (!$user) {
-            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $entityManager->remove($user);
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Utilisateur supprimé avec succès'], Response::HTTP_OK);
-    }
-}
-
-```
-
-
-Etape 6 (Tester la mise en place) : 
-
-Test 1 - Liste des commandes sans authentification :
-
-```
-GET /order
-```
-
-Résultat : 
-```
-{
-    "code": 401,
-    "message": "JWT Token not found"
-}
-```
-
-Test 2 - Liste des commandes sans autorisation :
-
-```
-GET /order
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 3 - Liste des commandes avec autorisation :
-
-```
-GET /order
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-[
-    {
-        "id": 1,
-        "status": "cancelled",
-        "user": {
-            "id": 9,
-            "email": "kemmer.wilmer@runolfsdottir.info"
-        },
-        "orderProducts": [
-            {
-                "id": 1,
-                "quantity": 4,
-                "product": {
-                    "id": 9,
-                    "name": "qui",
-                    "price": 50.71
-                }
-            }
-        ]
-    }
-]
-```
-
-Test 4 - Récupération d’une commande sans être l’auteur :
-
-```
-GET /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 5 - Récupération d’une commande en étant l’auteur :
-
-```
-GET /order/2
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-[
-    {
-        "id": 1,
-        "status": "cancelled",
-        "user": {
-            "id": 9,
-            "email": "kemmer.wilmer@runolfsdottir.info"
-        },
-        "orderProducts": [
-            {
-                "id": 1,
-                "quantity": 4,
-                "product": {
-                    "id": 9,
-                    "name": "qui",
-                    "price": 50.71
-                }
-            }
-        ]
-    }
-]
-```
-
-Test 6 - Récupération d’une commande sans autorisation : 
-
-```
-GET /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 7 - Récupération d’une commande avec autorisation :
-
-```
-GET /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-[
-    {
-        "id": 1,
-        "status": "cancelled",
-        "user": {
-            "id": 9,
-            "email": "kemmer.wilmer@runolfsdottir.info"
-        },
-        "orderProducts": [
-            {
-                "id": 1,
-                "quantity": 4,
-                "product": {
-                    "id": 9,
-                    "name": "qui",
-                    "price": 50.71
-                }
-            }
-        ]
-    }
-]
-```
-
-Test 8 - Modification d’une commande sans autorisation :
-
-```
-PUT /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 9 - Modification d’une commande avec autorisation :
-
-```
-PUT /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Commande mise à jour avec succès"
-}
-```
-
-Test 10 - Suppression d’une commande sans autorisation :
-
-```
-DELETE /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 11 - Suppression d’une commande avec autorisation :
-
-```
-DELETE /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Commande supprimée avec succès"
-}
-```
-
-Test 12 - Création d’un produit sans autorisation :
-
-```
-POST /product
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 13 - Création d’un produit avec autorisation :
-
-```
-POST /product
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
+### Tester l'upload avec Postman
+
+Pour tester cet upload, une simple requête JSON ne suffit pas. Le protocole HTTP nécessite d'utiliser le format multipart/form-data pour envoyer des fichiers binaires.
+Voici la configuration exacte à reproduire dans Postman :
+Méthode : POST
+URL : http://127.0.0.1:8000/product
+Onglet : Allez dans Body.
+Type : Sélectionnez form-data (et non raw ou x-www-form-urlencoded).
+
+| Clé (Key) | Valeur (Value) | Type (Menu déroulant) |
+| :--- | :--- | :--- |
+| `name` | iPhone 15 | Text |
+| `price` | 999 | Text |
+| `description` | Super téléphone | Text |
+| **`image`** | *(Sélectionnez votre fichier)* | **File** |
+
+Si tout est correct, l’API renvoie un statut 201 Created avec le JSON suivant :
+```JSON
 {
     "message": "Produit créé avec succès",
-    "id": 11
+    "id": 23,
+    "image": "iphone-15-65a4b2c1.jpg"
 }
 ```
-
-Test 14 - Modification d’un produit sans autorisation :
-
-```
-PUT /product/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 15 - Modification d’un produit avec autorisation :
-
-```
-PUT /product/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Produit mis à jour avec succès"
-}
-```
-
-Test 16 - Suppression d’un produit sans autorisation :
-
-```
-DELETE /product/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 17 - Suppression d’un produit avec autorisation :
-
-```
-DELETE /product/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Produit supprimé avec succès"
-}
-```
-
-Test 18 - Liste des utilisateurs sans autorisation :
-
-```
-GET /user
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 19 - Liste des utilisateurs avec autorisation :
-
-```
-GET /user
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-[
-    {
-        "id": 1,
-        "email": "parker.arlo@jacobson.org",
-        "roles": [
-            "ROLE_USER"
-        ]
-    },
-    {
-        "id": 2,
-        "email": "walsh.cory@yahoo.com",
-        "roles": [
-            "ROLE_USER"
-        ]
-    },
-]
-```
-
-Test 20 - Récupération d’un utilisateur sans autorisation :
-
-```
-GET /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 21 - Récupération d’un utilisateur avec autorisation :
-
-```
-GET /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "id": 1,
-    "email": "parker.arlo@jacobson.org",
-    "roles": [
-        "ROLE_USER"
-    ]
-}
-```
-
-Test 22 - Modification d’un utilisateur sans autorisation :
-
-```
-PUT /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 23 - Modification d’un utilisateur avec autorisation :
-
-```
-PUT /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Utilisateur mis à jour avec succès"
-}
-```
-
-Test 24 - Suppression d’un utilisateur sans autorisation :
-
-```
-DELETE /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 25 - Suppression d’un utilisateur avec autorisation :
-
-```
-DELETE /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Utilisateur supprimé avec succès"
-}
-```
-
-
-
