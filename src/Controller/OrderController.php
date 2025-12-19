@@ -56,7 +56,7 @@ final class OrderController extends AbstractController
         ProductRepository $productRepository
     ): JsonResponse {
 
-        $user = $userRepository->find($orderDto->userId);
+        $user = $this->getUser();
         if (!$user) {
             return $this->json(['message' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
