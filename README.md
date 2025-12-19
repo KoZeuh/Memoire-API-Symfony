@@ -1,1048 +1,427 @@
-Voici la correction de l'exercice sur la mise en place d'un système complet d'autorisation. (Chapitre 2 - Partie 5)
+Voici la correction de l'exercice sur la combinaison Validation et Sérialisation. (Chapitre 3 - Partie 2b)
 
-Etape 1 (Configurer la hiérarchie des rôles) :
+## Etape 1 Modifications sur l'entité User
 
-```yml
-# config/packages/security.yaml
+Pour sécuriser la création, nous avons défini un Groupe de Sérialisation spécifique (user:create). Cela permet de contrôler quels champs l'utilisateur a le droit d'envoyer lors de l'inscription (seulement email et password).
 
-security:
-    role_hierarchy:
-		ROLE_ADMIN: ROLE_USER
-		ROLE_SUPER_ADMIN: [ROLE_ADMIN, ROLE_ALLOWED_TO_SWITCH]
-```
-
-Etape 2 (Création du Voter) :
+Fichier : `src/Entity/User.php`.
+Nous avons ajouté le groupe user:create sur les propriétés $email et $password.
 
 ```php
-# src/Security/Voter/OrderVoter
+#[ORM\Column(length: 180)]
+#[Assert\NotBlank(message: "L'email est obligatoire")]
+#[Assert\Email(message: "L'email {{ value }} n'est pas valide")]
+#[Groups(['user:read', 'order:read', 'user:create'])] // <--- Ajout de user:create
+private ?string $email = null;
 
-namespace App\Security\Voter;
+#[ORM\Column]
+#[Assert\NotBlank(message: "Le mot de passe est obligatoire")]
+#[Assert\Length(min: 8)]
+#[Groups(['user:create'])] // <--- Ajout de user:create
+private ?string $password = null;
+```
 
-use App\Entity\Order;
-use App\Entity\User;
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
-use Symfony\Component\Security\Core\Authorization\Voter\Voter;
+## Etape 2 Refactorisation du UserController (Create)
+Dans le contrôleur, nous utilisons `#[MapRequestPayload]` en précisant le contexte de sérialisation. Cela dit à Symfony : "Prends le JSON, transforme-le en objet User, mais regarde uniquement les champs marqué `user:create`."
 
-class OrderVoter extends Voter
-{
-    public const LIST = 'ORDER_LIST';
-    public const SHOW = 'ORDER_SHOW';
-    public const EDIT = 'ORDER_EDIT';
-    public const DELETE = 'ORDER_DELETE';
-
-    protected function supports(string $attribute, mixed $subject): bool
-    {
-        if (!in_array($attribute, [self::LIST, self::SHOW, self::EDIT, self::DELETE], true)) {
-            return false;
-        }
-
-        // LIST, EDIT, DELETE n'a pas besoin de subject (Dans ce cas de figure actuel)
-        // (Uniquement SHOW nécessite un subject Order car on vérifie si l'utilisateur peut voir une commande dont il est l'auteur)
-        if ($attribute === self::LIST || $attribute === self::EDIT || $attribute === self::DELETE) {
-            return true;
-        }
-
-        // Les autres actions nécessitent un objet Order
-        if (!$subject instanceof Order) {
-            return false;
-        }
-
-        return true;
-    }
-
-    protected function voteOnAttribute(string $attribute, mixed $subject, TokenInterface $token): bool
-    {
-        $user = $token->getUser();
-
-        if (!$user instanceof User) {
-            return false;
-        }
-
-        return match($attribute) {
-            self::LIST => $this->canShowList($user),
-            self::SHOW => $this->canShow($user, $subject),
-            self::EDIT => $this->canEdit($user),
-            self::DELETE => $this->canDelete($user),
-            default => false,
-        };
-    }
-
-    private function canShowList(User $user): bool
-    {
+Fichier : `src/Controller/UserController.php`.
+```php
+#[Route('/register', name: 'create', methods: ['POST'])]
+    public function create(
+    #[MapRequestPayload(serializationContext: ['groups' => ['user:create']])] User $user, 
+    EntityManagerInterface $entityManager, 
+    UserPasswordHasherInterface $passwordHasher
+): JsonResponse {
         
-        return in_array('ROLE_ADMIN', $user->getRoles());
-    }
+        // À ce stade, $user contient l'email et le mot de passe (en clair) envoyés.
+        // Il ne reste plus qu'à hasher le mot de passe.
+        $hashedPassword = $passwordHasher->hashPassword($user, $user->getPassword());
+        $user->setPassword($hashedPassword);
 
-    private function canShow(User $user, Order $order): bool
-    {
-        return in_array('ROLE_ADMIN', $user->getRoles()) || $order->getUser() === $user;
-    }
-
-    private function canEdit(User $user): bool
-    {
-        return in_array('ROLE_ADMIN', $user->getRoles());
-    }
-
-    private function canDelete(User $user): bool
-    {
-        return in_array('ROLE_SUPER_ADMIN', $user->getRoles());
-    }
-}
-
-```
-
-Etape 3 (Implémenter le voter dans le contrôleur) :
-
-```php
-# src/Controller/OrderController.php
-
-<?php
-
-namespace App\Controller;
-
-use App\Entity\Order;
-use App\Entity\OrderProduct;
-
-use App\Repository\OrderRepository;
-use App\Repository\UserRepository;
-use App\Repository\ProductRepository;
-
-use Doctrine\ORM\EntityManagerInterface;
-
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\HttpFoundation\JsonResponse;
-
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-
-use Symfony\Component\Validator\Validator\ValidatorInterface;
-
-use Symfony\Component\Security\Http\Attribute\IsGranted;
-
-#[Route('/order', name: 'app_order_')]
-#[IsGranted('IS_AUTHENTICATED_FULLY')]
-final class OrderController extends AbstractController
-{
-    #[Route('/', name: 'list', methods: ['GET'])]
-    #[IsGranted('ORDER_LIST')]
-    public function list(OrderRepository $orderRepository): JsonResponse
-    {
-        $orders = $orderRepository->findAll();
-
-        $data = [];
-        foreach ($orders as $order) {
-            $data[] = [
-                'id' => $order->getId(),
-                'status' => $order->getStatus(),
-                'user' => [
-                    'id' => $order->getUser()->getId(),
-                    'email' => $order->getUser()->getEmail(),
-                ],
-                'orderProducts' => array_map(function ($orderProduct) {
-                    return [
-                        'id' => $orderProduct->getId(),
-                        'quantity' => $orderProduct->getQuantity(),
-                        'product' => [
-                            'id' => $orderProduct->getProduct()->getId(),
-                            'name' => $orderProduct->getProduct()->getName(),
-                            'price' => $orderProduct->getProduct()->getPrice(),
-                        ],
-                    ];
-                }, $order->getOrderProducts()->toArray()),
-            ];
-        }
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('/{id}', name: 'show', methods: ['GET'])]
-    #[IsGranted('ORDER_SHOW', subject: 'order')]
-    public function show(Order $order): JsonResponse
-    {
-        if (!$order) {
-            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
-        }
-
-        $data = [
-            'id' => $order->getId(),
-            'status' => $order->getStatus(),
-            'user' => [
-                'id' => $order->getUser()->getId(),
-                'email' => $order->getUser()->getEmail(),
-            ],
-            'orderProducts' => array_map(function ($orderProduct) {
-                return [
-                    'id' => $orderProduct->getId(),
-                    'quantity' => $orderProduct->getQuantity(),
-                    'product' => [
-                        'id' => $orderProduct->getProduct()->getId(),
-                        'name' => $orderProduct->getProduct()->getName(),
-                        'price' => $orderProduct->getProduct()->getPrice(),
-                    ],
-                ];
-            }, $order->getOrderProducts()->toArray()),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository, ProductRepository $productRepository): JsonResponse
-    {
-        try {
-            $payload = $request->getPayload();
-            $user = $userRepository->find($payload->get('userId'));
-
-            if (!$user) {
-                return $this->json(['message' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-            }
-
-            $order = new Order();
-            $order->setUser($user);
-
-            foreach ($payload->all()['products'] as $index => $productData) {
-                $product = $productRepository->find($productData['id']);
-
-                if (!$product) {
-                    return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-                }
-
-                $orderProduct = new OrderProduct();
-                $orderProduct->setOrders($order);
-                $orderProduct->setProduct($product);
-                $orderProduct->setQuantity((int)$productData['quantity']);
-
-                $order->addOrderProduct($orderProduct);
-
-                $errors = $validator->validate($orderProduct);
-
-                if (count($errors) > 0) {
-                    $errorMessages = [];
-                    foreach ($errors as $error) {
-                        $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-                    }
-
-                    return $this->json([
-                        'error' => 'Validation échouée',
-                        'violations' => $errorMessages
-                    ], Response::HTTP_BAD_REQUEST);
-                }
-
-                $entityManager->persist($orderProduct);
-            }
-
-            $errors = $validator->validate($order);
-
-            if (count($errors) > 0) {
-                $errorMessages = [];
-                foreach ($errors as $error) {
-                    $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-                }
-
-                return $this->json([
-                    'error' => 'Validation échouée',
-                    'violations' => $errorMessages], 
-                Response::HTTP_BAD_REQUEST);
-            }
-
-            $entityManager->persist($order);
-            $entityManager->flush();
-
-            return $this->json([
-                'message' => 'Commande créée avec succès',
-                'orderId' => $order->getId()
-            ], Response::HTTP_CREATED);
-        } catch (\Exception $e) {
-            return $this->json([
-                'message' => 'Erreur lors de la création de la commande', 
-                'error' => $e->getMessage()], 
-            Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    #[IsGranted('ORDER_EDIT')]
-    public function update(Order $order, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserRepository $userRepository): JsonResponse
-    {
-        if (!$order) {
-            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
-        }
-
-        $payload = $request->getPayload();
-
-        if ($payload->has('user_id')) {
-            $user = $userRepository->find($payload->get('user_id'));
-
-            if (!$user) {
-                return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-            }
-
-            $order->setUser($user);
-        }
-        if ($payload->has('status')) {
-            $order->setStatus($payload->getString('status'));
-        }
-
-        $errors = $validator->validate($order);
-
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
+        $entityManager->persist($user);
         $entityManager->flush();
 
-        return $this->json(['message' => 'Commande mise à jour avec succès'], Response::HTTP_OK);
+        return $this->json(['message' => 'Utilisateur créé avec succès'], Response::HTTP_CREATED);
     }
-
-    #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('ORDER_DELETE')]
-    public function delete(Order $order, EntityManagerInterface $entityManager): JsonResponse
-    {
-        if (!$order) {
-            return $this->json(['error' => 'Commande non trouvée'], Response::HTTP_NOT_FOUND);
-        }
-
-        $entityManager->remove($order);
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Commande supprimée avec succès'], Response::HTTP_OK);
-    }
-}
-
-
 ```
 
-Etape 4 (Implémenter les restrictions dans le contrôleur) :
+## Etape 3 Refactorisation du ProductController (Create)
+
+Pour le produit, la logique est encore plus simple car nous n'avons pas restreint les champs via un groupe spécifique dans cet exercice (on prend tout l'objet Product).
+
+Fichier : `src/Controller/ProductController.php`
 
 ```php
-# src/Controller/ProductController.php
-
-namespace App\Controller;
-
-use App\Entity\Product;
-use App\Repository\ProductRepository;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-
-use Symfony\Component\Security\Http\Attribute\IsGranted;
-
-use Symfony\Component\Validator\Validator\ValidatorInterface;
-
-#[Route('/product', name: 'app_product_')]
-final class ProductController extends AbstractController
-{
-    #[Route('/', name: 'list', methods: ['GET'])]
-    public function list(ProductRepository $productRepository): JsonResponse
-    {
-        $products = $productRepository->findAll();
-
-        $data = [];
-        foreach ($products as $product) {
-            $data[] = [
-                'id' => $product->getId(),
-                'name' => $product->getName(),
-                'description' => $product->getDescription(),
-                'price' => $product->getPrice(),
-            ];
-        };
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(Product $product): JsonResponse
-    {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $data = [
-            'id' => $product->getId(),
-            'name' => $product->getName(),
-            'description' => $product->getDescription(),
-            'price' => $product->getPrice(),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('', name: 'create', methods: ['POST'])]
+#[Route('', name: 'create', methods: ['POST'])]
     #[IsGranted('ROLE_ADMIN')]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
-    {
-        $payload = $request->getPayload();
+    public function create(
+        // L'attribut MapRequestPayload fait tout le travail de mapping JSON -> Product
+        #[MapRequestPayload] Product $product, 
+        EntityManagerInterface $entityManager
+    ): JsonResponse {
 
-        $product = new Product();
-        $product->setName($payload->get('name'));
-        $product->setDescription($payload->get('description'));
-        $product->setPrice($payload->get('price'));
-        $product->setCode($payload->get('code'));
+// Pas de logique métier complexe ici, on sauvegarde directement.
+    $entityManager->persist($product);
+    $entityManager->flush();
 
-        $errors = $validator->validate($product);
+    return $this->json([
+        'message' => 'Produit créé avec succès',
+        'id' => $product->getId()
+    ], Response::HTTP_CREATED);
+    }
+```
 
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
+## Etape 4 Création avec DTOs (Order & OrderProduct)
+Pour les entités comme Order (Commande), nous ne pouvons pas utiliser directement l'entité pour la création. Pourquoi ? Parce que le client (le frontend) nous envoie des IDs (ex: userId: 1, productId: 5) et non des objets complets. 
+L'entité Order attend des objets User et Collection<OrderProduct>, ce qui rend le mapping automatique impossible sans intermédiaire.
 
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
+Nous utilisons donc des DTOs pour valider la structure reçue avant de traiter les données.
+
+##Création des Dtos
+
+Installation de cette bilbiothèque
+```bash
+composer require phpdocumentor/reflection-docblock
+```
+
+A. Le modèle d'un article (OrderItemDto)
+Ce DTO représente une ligne dans la liste des produits d'une commande.
+
+Fichier : `src/Dto/OrderItemDto.php`
+
+```php
+class OrderItemDto
+{
+    #[Assert\NotNull(message: "L'ID du produit est obligatoire")]
+    public ?int $id = null;
+
+    #[Assert\Positive(message: "La quantité doit être positive")]
+    public int $quantity = 1;
+}
+```
+
+B. Le modèle de création de commande (OrderCreateDto)
+C'est l'objet principal reçu par le contrôleur. Il contient l'ID du client et une liste d'articles.
+
+Fichier : `src/Dto/OrderCreateDto.php`
+
+```php
+class OrderCreateDto
+{
+    #[Assert\NotNull]
+    public ?int $userId = null;
+
+    #[Assert\Valid]
+    #[Assert\Count(min: 1, minMessage: "Une commande doit contenir au moins 1 article")]
+    /** @var OrderItemDto[] */
+    public array $products = [];
+}
+```
+
+C. Le modèle pour une ligne unique (OrderProductDto)
+Ce DTO est utilisé spécifiquement par le OrderProductController pour ajouter un produit à une commande déjà existante. 
+Nous avons utilisé l'attribut #[SerializedName] pour mapper les clés JSON en snake_case (ex: order_id) vers les propriétés PHP en camelCase ($orderId).
+
+Fichier : `src/Dto/OrderProductDto.php`
+
+```php
+namespace App\Dto;
+
+use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Serializer\Attribute\SerializedName;
+
+class OrderProductDto
+{
+    #[Assert\NotNull]
+    #[SerializedName('order_id')] // Le JSON attend "order_id"
+    public ?int $orderId = null;
+
+    #[Assert\NotNull]
+    #[SerializedName('product_id')] // Le JSON attend "product_id"
+    public ?int $productId = null;
+
+    #[Assert\Positive]
+    public int $quantity = 1;
+}
+```
+
+## Etape 5 Modification du OrderController
+Dans le contrôleur, nous injectons le DTO (`OrderCreateDto`) au lieu de l'entité. Le contrôleur a ensuite la responsabilité de convertir ce DTO en véritables entités Doctrine (`Order, OrderProduct`) en allant chercher les références en base de données.
+
+Fichier : `src/Controller/OrderController.php`
+
+```php
+#[Route('', name: 'create', methods: ['POST'])]
+    public function create(
+        #[MapRequestPayload] OrderCreateDto $orderDto, // Validation de la structure JSON
+        EntityManagerInterface $entityManager,
+        UserRepository $userRepository,
+        ProductRepository $productRepository
+    ): JsonResponse {
+
+        $user = $userRepository->find($orderDto->userId);
+        if (!$user) {
+            return $this->json(['message' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
         }
 
-        $entityManager->persist($product);
+        $order = new Order();
+        $order->setUser($user);
+
+        foreach ($orderDto->products as $productDto) {
+            $product = $productRepository->find($productDto->id);
+            
+            if (!$product) {
+                return $this->json(['error' => "Produit (ID: {$productDto->id}) non trouvé"], Response::HTTP_NOT_FOUND);
+            }
+
+            $orderProduct = new OrderProduct();
+            $orderProduct->setOrders($order);
+            $orderProduct->setProduct($product);
+            $orderProduct->setQuantity($productDto->quantity);
+
+            $entityManager->persist($orderProduct);
+            
+            // On lie la ligne à la commande pour la cohérence objet
+            $order->addOrderProduct($orderProduct);
+        }
+
+        $entityManager->persist($order);
         $entityManager->flush();
 
         return $this->json([
-            'message' => 'Produit créé avec succès',
-            'id' => $product->getId()
+            'message' => 'Commande créée avec succès',
+            'orderId' => $order->getId()
         ], Response::HTTP_CREATED);
     }
+```
 
-    #[Route('/{id}', name: 'update', methods: ['PUT'])]
+## Etape 6 Modification du OrderProductController
+Nous avons également adapté la création d'une ligne de commande unique (ajout d'un produit dans une commande existante) en utilisant un DTO spécifique : `OrderProductDto`.
+
+Fichier : `src/Controller/OrderProductController.php`
+
+```php
+#[Route('', name: 'create', methods: ['POST'])]
+    public function create(
+        #[MapRequestPayload] OrderProductDto $dto,
+        EntityManagerInterface $entityManager,
+        OrderRepository $orderRepository,
+        ProductRepository $productRepository
+    ): JsonResponse {
+        
+        // Même logique : on récupère les entités via les IDs du DTO
+        $order = $orderRepository->find($dto->orderId);
+        $product = $productRepository->find($dto->productId);
+
+        if (!$order || !$product) {
+            return $this->json(['error' => 'Commande ou Produit introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $orderProduct = new OrderProduct();
+        $orderProduct->setOrders($order);
+        $orderProduct->setProduct($product);
+        $orderProduct->setQuantity($dto->quantity);
+
+        $entityManager->persist($orderProduct);
+        $entityManager->flush();
+
+        return $this->json(['message' => 'Produit ajouté à la commande'], Response::HTTP_CREATED);
+    }
+```
+
+## Etape 7 Mise à jour avec Serializer (Update)
+Pour les méthodes de mise à jour (`update`), nous ne pouvons pas utiliser `#[MapRequestPayload]` aussi simplement, car nous ne voulons pas créer un nouvel objet, mais modifier un objet existant récupéré par Doctrine via l'URL `({id})`.
+
+Nous utilisons donc le service `SerializerInterface` manuellement avec l'option clé `object_to_populate`.
+
+## Modification des entités (Groupes de Valisation)
+
+Nous avons ajouté des groupes de sérialisation spécifiques (:update) pour contrôler précisément quels champs peuvent être modifiés par l'API.
+
+A. User (`src/Entity/User.php`)
+On autorise la modification de l'email et du mot de passe.
+```php
+#[Groups(['user:read', 'order:read', 'user:create', 'user:update'])] // Ajout user:update
+    private ?string $email = null;
+
+    #[Groups(['user:create', 'user:update'])] // Ajout user:update
+    private ?string $password = null;
+```
+B. Order (`src/Entity/Order.php`)
+On autorise uniquement la modification du statut de la commande.
+```php
+#[ORM\Column(length: 255)]
+    #[Groups(['order:read', 'order:update'])] // Ajout order:update
+    private ?string $status = 'pending';
+```
+C. OrderProduct (`src/Entity/OrderProduct.php`)
+On autorise uniquement la modification de la quantité.
+```php
+#[ORM\Column]
+    #[Groups(['order:item', 'order:item:update'])] // Ajout order:item:update
+    private ?int $quantity = null;
+```
+
+## Modification des contrôleurs (Update)
+
+La logique est similaire pour tous les contrôleurs :
+
+Désérialiser le JSON dans l'entité existante (object_to_populate).
+Valider l'entité modifiée (validator->validate).
+Sauvegarder (flush).
+
+A. ProductController (Mise à jour standard)
+Ici, nous n'avons pas défini de groupe spécifique dans le code fourni, nous mettons à jour l'objet complet.
+
+Fichier : `src/Controller/ProductController.php`
+```php
+#[Route('/{id}', name: 'update', methods: ['PUT'])]
     #[IsGranted('ROLE_ADMIN')]
-    public function update(Product $product, Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator): JsonResponse
-    {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-        }
+    public function update(
+        Product $product, 
+        Request $request, 
+        SerializerInterface $serializer, 
+        EntityManagerInterface $entityManager, 
+        ValidatorInterface $validator
+    ): JsonResponse {
+        
+        // 1. Injection des données JSON dans l'objet $product existant
+        $serializer->deserialize(
+            $request->getContent(),
+            Product::class,
+            'json',
+            ['object_to_populate' => $product]
+        );
 
-        $payload = $request->getPayload();
-
-        if ($payload->has('name')) {
-            $product->setName($payload->getString('name'));
-        }
-        if ($payload->has('description')) {
-            $product->setDescription($payload->getString('description'));
-        }
-        if ($payload->has('price')) {
-            $product->setPrice($payload->get('price'));
-        }
-        if ($payload->has('code')) {
-            $product->setCode($payload->getString('code'));
-        }
-
+        // 2. Validation manuelle
         $errors = $validator->validate($product);
-
         if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
+            // ... Logique de retour d'erreur (voir code complet)
+             return $this->json($errors, Response::HTTP_BAD_REQUEST);
         }
 
+        // 3. Sauvegarde
         $entityManager->flush();
 
         return $this->json(['message' => 'Produit mis à jour avec succès'], Response::HTTP_OK);
     }
-
-    #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
-    public function delete(Product $product, EntityManagerInterface $entityManager): JsonResponse
-    {
-        if (!$product) {
-            return $this->json(['error' => 'Produit non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $entityManager->remove($product);
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Produit supprimé avec succès'], Response::HTTP_OK);
-    }
-}
-
 ```
 
-Etape 5 (Implémenter les restrictions dans le contrôleur) :
+B. UserController (Gestion du Mot de passe)
+Cas particulier : si l'utilisateur envoie un nouveau mot de passe, il faut le hasher avant de sauvegarder. Le Serializer remplit l'entité avec le mot de passe en clair, nous devons le détecter et le chiffrer.
 
+Fichier : `src/Controller/UserController.php`
 ```php
-# src/Controller/UserController.php
-
-namespace App\Controller;
-
-use App\Entity\User;
-use App\Repository\UserRepository;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
-
-use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Component\Security\Http\Attribute\IsGranted;
-
-#[Route('/user', name: 'app_user_')]
-final class UserController extends AbstractController
-{
-    #[Route('/', name: 'list', methods: ['GET'])]
+#[Route('/{id}', name: 'update', methods: ['PUT'])]
     #[IsGranted('ROLE_ADMIN')]
-    public function list(UserRepository $userRepository): JsonResponse
-    {
-        $users = $userRepository->findAll();
+    public function update(
+        User $user,
+        Request $request,
+        SerializerInterface $serializer,
+        EntityManagerInterface $entityManager,
+        UserPasswordHasherInterface $passwordHasher, // Nécessaire pour le hash
+        ValidatorInterface $validator
+    ): JsonResponse {
+        
+        // On restreint la mise à jour aux champs du groupe 'user:update'
+        $serializer->deserialize(
+            $request->getContent(),
+            User::class,
+            'json',
+            [
+                'object_to_populate' => $user,
+                'groups' => ['user:update'] // Sécurité : on ignore les autres champs
+            ]
+        );
 
-        $data = [];
-        foreach ($users as $user) {
-            $data[] = [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'roles' => $user->getRoles(),
-            ];
-        };
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('/{id}', name: 'show', methods: ['GET'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function show(User $user): JsonResponse
-    {
-        if (!$user) {
-            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $data = [
-            'id' => $user->getId(),
-            'email' => $user->getEmail(),
-            'roles' => $user->getRoles(),
-        ];
-
-        return $this->json($data, Response::HTTP_OK);
-    }
-
-    #[Route('/login', methods: ['POST'])]
-    public function login(): JsonResponse
-        {
-        // Cette méthode ne sera jamais appelée car l'authentification est gérée par le firewall
-        // Elle sert uniquement de point d'entrée pour la route /user/login
-        // Le firewall 'login' dans security.yaml intercepte cette route et gère l'authentification
-        // En cas de succès, lexik_jwt_authentication.handler.authentication_success retourne le token
-        return $this->json([
-            'message' => 'Cette route est gérée par le firewall pour l\'authentification.'
-        ]);
-    }
-
-    #[Route('/register', name: 'create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, ValidatorInterface $validator, UserPasswordHasherInterface $passwordHasher): JsonResponse
-    {
-        try {
-            $payload = $request->getPayload();
-
-            $user = new User();
-            $user->setEmail($payload->get('email'));
-
-            // Validation AVANT le hashage du mot de passe
-            $plainPassword = $payload->get('password');
-            $user->setPassword($plainPassword); // Temporairement pour la validation
-
-            $errors = $validator->validate($user);
-
-            if (count($errors) > 0) {
-                $errorMessages = [];
-                foreach ($errors as $error) {
-                    $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-                }
-
-                return $this->json([
-                    'message' => 'Validation échouée',
-                    'violations' => $errorMessages
-                ], Response::HTTP_BAD_REQUEST);
-            }
-
-            // Hash le mot de passe après validation
-            $hashedPassword = $passwordHasher->hashPassword($user, $plainPassword);
-            $user->setPassword($hashedPassword);
-
-            $entityManager->persist($user);
-            $entityManager->flush();
-
-            return $this->json(['message' => 'Utilisateur créé avec succès'], Response::HTTP_CREATED);
-        } catch (\Exception $e) {
-            return $this->json([
-                'message' => 'Erreur lors de la création de l\'utilisateur',
-                'error' => $e->getMessage()
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function update(User $user, Request $request, EntityManagerInterface $entityManager, UserPasswordHasherInterface $passwordHasher, ValidatorInterface $validator): JsonResponse
-    {
-        if (!$user) {
-            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
-        }
-
-        $payload = $request->getPayload();
-
-        if ($payload->has('email')) {
-            $user->setEmail($payload->getString('email'));
-        }
-        if ($payload->has('roles')) {
-            $user->setRoles($payload->get('roles'));
-        }
-        if ($payload->has('password')) {
-            $hashedPassword = $passwordHasher->hashPassword($user, $payload->getString('password'));
-            $user->setPassword($hashedPassword);
-        }
-
+        // Validation
         $errors = $validator->validate($user);
-
         if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
+            return $this->json($errors, Response::HTTP_BAD_REQUEST);
+        }
 
-            return $this->json([
-                'message' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
+        // Vérification manuelle de la présence d'un mot de passe dans le JSON envoyé
+        $payload = $request->toArray();
+        if (isset($payload['password'])) {
+            // Hachage du nouveau mot de passe
+            $user->setPassword(
+                $passwordHasher->hashPassword($user, $user->getPassword())
+            );
         }
 
         $entityManager->flush();
 
         return $this->json(['message' => 'Utilisateur mis à jour avec succès'], Response::HTTP_OK);
     }
+```
 
-    #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
-    public function delete(User $user, EntityManagerInterface $entityManager): JsonResponse
-    {
-        if (!$user) {
-            return $this->json(['error' => 'Utilisateur non trouvé'], Response::HTTP_NOT_FOUND);
+C. OrderController (Mise à jour du statut)
+On utilise le groupe order:update pour s'assurer que seul le statut est modifiable (on ne change pas le User ou les produits d'une commande via cette route).
+
+Fichier : `src/Controller/OrderController.php`
+```php
+#[Route('/{id}', name: 'update', methods: ['PUT'])]
+    #[IsGranted('ORDER_EDIT')]
+    public function update(
+        Order $order,
+        Request $request,
+        SerializerInterface $serializer,
+        EntityManagerInterface $entityManager,
+        ValidatorInterface $validator
+    ): JsonResponse {
+
+       $serializer->deserialize(
+            $request->getContent(),
+            Order::class,
+            'json',
+            [
+                'object_to_populate' => $order,
+                'groups' => ['order:update'] // Seul le status a ce groupe
+            ]
+        );
+
+        $errors = $validator->validate($order);
+        if (count($errors) > 0) {
+             return $this->json($errors, Response::HTTP_BAD_REQUEST);
         }
 
-        $entityManager->remove($user);
         $entityManager->flush();
 
-        return $this->json(['message' => 'Utilisateur supprimé avec succès'], Response::HTTP_OK);
+        return $this->json(['message' => 'Commande mise à jour avec succès'], Response::HTTP_OK);
     }
-}
-
 ```
 
+D. OrderProductController (Mise à jour de la quantité)
+On utilise le groupe 'order:item:update' pour ne permettre que la modification de la quantité.
 
-Etape 6 (Tester la mise en place) : 
+Fichier : 'src/Controller/OrderProductController.php'
+```php
+#[Route('/{id}', name: 'update', methods: ['PUT'])]
+    public function update(
+        OrderProduct $orderProduct,
+        Request $request,
+        SerializerInterface $serializer,
+        EntityManagerInterface $entityManager,
+        ValidatorInterface $validator
+    ): JsonResponse {
 
-Test 1 - Liste des commandes sans authentification :
+        $serializer->deserialize(
+            $request->getContent(),
+            OrderProduct::class,
+            'json',
+            [
+                'object_to_populate' => $orderProduct,
+                'groups' => ['order:item:update'] // Seule la quantité a ce groupe
+            ]
+        );
 
-```
-GET /order
-```
+        $errors = $validator->validate($orderProduct);
+        if (count($errors) > 0) {
+            return $this->json($errors, Response::HTTP_BAD_REQUEST);
+        }
 
-Résultat : 
-```
-{
-    "code": 401,
-    "message": "JWT Token not found"
-}
-```
+        $entityManager->flush();
 
-Test 2 - Liste des commandes sans autorisation :
-
-```
-GET /order
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 3 - Liste des commandes avec autorisation :
-
-```
-GET /order
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-[
-    {
-        "id": 1,
-        "status": "cancelled",
-        "user": {
-            "id": 9,
-            "email": "kemmer.wilmer@runolfsdottir.info"
-        },
-        "orderProducts": [
-            {
-                "id": 1,
-                "quantity": 4,
-                "product": {
-                    "id": 9,
-                    "name": "qui",
-                    "price": 50.71
-                }
-            }
-        ]
+        return $this->json(['message' => 'Ligne de commande mise à jour'], Response::HTTP_OK);
     }
-]
 ```
-
-Test 4 - Récupération d’une commande sans être l’auteur :
-
-```
-GET /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 5 - Récupération d’une commande en étant l’auteur :
-
-```
-GET /order/2
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-[
-    {
-        "id": 1,
-        "status": "cancelled",
-        "user": {
-            "id": 9,
-            "email": "kemmer.wilmer@runolfsdottir.info"
-        },
-        "orderProducts": [
-            {
-                "id": 1,
-                "quantity": 4,
-                "product": {
-                    "id": 9,
-                    "name": "qui",
-                    "price": 50.71
-                }
-            }
-        ]
-    }
-]
-```
-
-Test 6 - Récupération d’une commande sans autorisation : 
-
-```
-GET /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 7 - Récupération d’une commande avec autorisation :
-
-```
-GET /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-[
-    {
-        "id": 1,
-        "status": "cancelled",
-        "user": {
-            "id": 9,
-            "email": "kemmer.wilmer@runolfsdottir.info"
-        },
-        "orderProducts": [
-            {
-                "id": 1,
-                "quantity": 4,
-                "product": {
-                    "id": 9,
-                    "name": "qui",
-                    "price": 50.71
-                }
-            }
-        ]
-    }
-]
-```
-
-Test 8 - Modification d’une commande sans autorisation :
-
-```
-PUT /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 9 - Modification d’une commande avec autorisation :
-
-```
-PUT /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Commande mise à jour avec succès"
-}
-```
-
-Test 10 - Suppression d’une commande sans autorisation :
-
-```
-DELETE /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 11 - Suppression d’une commande avec autorisation :
-
-```
-DELETE /order/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Commande supprimée avec succès"
-}
-```
-
-Test 12 - Création d’un produit sans autorisation :
-
-```
-POST /product
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 13 - Création d’un produit avec autorisation :
-
-```
-POST /product
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Produit créé avec succès",
-    "id": 11
-}
-```
-
-Test 14 - Modification d’un produit sans autorisation :
-
-```
-PUT /product/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 15 - Modification d’un produit avec autorisation :
-
-```
-PUT /product/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Produit mis à jour avec succès"
-}
-```
-
-Test 16 - Suppression d’un produit sans autorisation :
-
-```
-DELETE /product/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 17 - Suppression d’un produit avec autorisation :
-
-```
-DELETE /product/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Produit supprimé avec succès"
-}
-```
-
-Test 18 - Liste des utilisateurs sans autorisation :
-
-```
-GET /user
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 19 - Liste des utilisateurs avec autorisation :
-
-```
-GET /user
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-[
-    {
-        "id": 1,
-        "email": "parker.arlo@jacobson.org",
-        "roles": [
-            "ROLE_USER"
-        ]
-    },
-    {
-        "id": 2,
-        "email": "walsh.cory@yahoo.com",
-        "roles": [
-            "ROLE_USER"
-        ]
-    },
-]
-```
-
-Test 20 - Récupération d’un utilisateur sans autorisation :
-
-```
-GET /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 21 - Récupération d’un utilisateur avec autorisation :
-
-```
-GET /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "id": 1,
-    "email": "parker.arlo@jacobson.org",
-    "roles": [
-        "ROLE_USER"
-    ]
-}
-```
-
-Test 22 - Modification d’un utilisateur sans autorisation :
-
-```
-PUT /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 23 - Modification d’un utilisateur avec autorisation :
-
-```
-PUT /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Utilisateur mis à jour avec succès"
-}
-```
-
-Test 24 - Suppression d’un utilisateur sans autorisation :
-
-```
-DELETE /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-Access Denied. (403 Forbidden)
-```
-
-Test 25 - Suppression d’un utilisateur avec autorisation :
-
-```
-DELETE /user/1
-Authorization : Bearer `token`
-```
-
-Résultat : 
-```
-{
-    "message": "Utilisateur supprimé avec succès"
-}
-```
-
-
-
