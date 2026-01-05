@@ -53,6 +53,9 @@ class Product
     #[ORM\OneToMany(targetEntity: OrderProduct::class, mappedBy: 'product')]
     private Collection $orderProducts;
 
+    #[ORM\ManyToOne(inversedBy: 'Product')]
+    private ?Category $category = null;
+
     public function __construct()
     {
         $this->orderProducts = new ArrayCollection();
@@ -148,6 +151,18 @@ class Product
     public function setImage(?string $image): static
     {
         $this->image = $image;
+
+        return $this;
+    }
+
+    public function getCategory(): ?Category
+    {
+        return $this->category;
+    }
+
+    public function setCategory(?Category $category): static
+    {
+        $this->category = $category;
 
         return $this;
     }
