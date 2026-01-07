@@ -688,11 +688,6 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
  *         enabled?: bool, // Default: false
  *     },
  * }
- * @psalm-type MakerConfig = array{
- *     root_namespace?: scalar|null, // Default: "App"
- *     generate_final_classes?: bool, // Default: true
- *     generate_final_entities?: bool, // Default: false
- * }
  * @psalm-type DoctrineConfig = array{
  *     dbal?: array{
  *         default_connection?: scalar|null,
@@ -1699,6 +1694,11 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
  *         item_uri_template?: mixed,
  *         ...<mixed>
  *     },
+ * }
+ * @psalm-type MakerConfig = array{
+ *     root_namespace?: scalar|null, // Default: "App"
+ *     generate_final_classes?: bool, // Default: true
+ *     generate_final_entities?: bool, // Default: false
  * }
  * @psalm-type ConfigType = array{
  *     imports?: ImportsConfig,

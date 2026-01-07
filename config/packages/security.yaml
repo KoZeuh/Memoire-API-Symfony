@@ -39,6 +39,7 @@ security:
             jwt: ~
 
     access_control:
+        - { path: ^/ping, roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: PUBLIC_ACCESS }
         - { path: ^/user/login, roles: PUBLIC_ACCESS }
         - { path: ^/user/register, roles: PUBLIC_ACCESS }

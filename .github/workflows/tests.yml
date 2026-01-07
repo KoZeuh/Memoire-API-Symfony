@@ -1,0 +1,24 @@
+name: Run API tests
+
+on:
+    push:
+    pull_request:
+
+jobs:
+    tests:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.2'
+                  extensions: mbstring, intl, pdo_mysql
+
+            - name: Install dependencies
+              run: composer install --prefer-dist
+
+            - name: Run tests
+              run: php bin/phpunit
