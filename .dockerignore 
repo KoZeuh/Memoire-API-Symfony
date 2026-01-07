@@ -1,0 +1,7 @@
+.git
+.gitignore
+node_modules
+var/cache
+var/log
+.env.local
+docker-compose.yml
