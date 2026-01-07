@@ -1,16 +1,17 @@
 Voici la correction de l'exercice sur la mise en place des gestions de fichiers. (Chapitre 3 - Partie 3)
 
-
 ## Déclarer un dossier d'upload
+
 Avant de pouvoir stocker un fichier, Symfony doit savoir où le placer. Dans `config/services.yaml, on ajoute un paramètre global qui représente le chemin vers le dossier public des uploads.
+
 ```yaml
 parameters:
-    upload_directory: '%kernel.project_dir%/public/uploads'
+    upload_directory: "%kernel.project_dir%/public/uploads"
 ```
 
 ### Créer le service FileUploader
 
-Plutôt que d’écrire la logique dans le contrôleur, on crée un service. Nous allons utiliser le `SluggerInterface` de Symfony pour nettoyer le nom du fichier, c'est une sécurité indispensable. 
+Plutôt que d’écrire la logique dans le contrôleur, on crée un service. Nous allons utiliser le `SluggerInterface` de Symfony pour nettoyer le nom du fichier, c'est une sécurité indispensable.
 
 Créez le fichier : `src/Service/FileUploader.php`
 
@@ -36,10 +37,10 @@ class FileUploader
     {
         // Récupérer le nom de fichier original (sans l'extension)
         $originalFilename = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        
+
         // Sécuriser le nom (suppression des accents, espaces, caractères spéciaux)
         $safeFilename = $this->slugger->slug($originalFilename);
-        
+
         // Générer un nom unique pour éviter d'écraser un fichier existant
         $fileName = $safeFilename.'-'.uniqid().'.'.$file->guessExtension();
 
@@ -51,25 +52,26 @@ class FileUploader
             throw new \RuntimeException("Erreur lors de l'upload du fichier");
         }
 
-        return $fileName; // On retourne juste le nom 
+        return $fileName; // On retourne juste le nom
     }
 }
 ```
 
 Ensuite, on configure ce service dans config/services.yaml pour lui passer le dossier d'upload défini à l'étape 1 :
+
 ```yaml
 # config/services.yaml
 services:
     # ...
-    
+
     # Injection de l'argument $targetDirectory dans notre service
     App\Service\FileUploader:
         arguments:
-            $targetDirectory: '%upload_directory%'
+            $targetDirectory: "%upload_directory%"
 ```
 
-
 ### Mettre à jour l'entité Product
+
 ```php
 #[ORM\Column(length: 255, nullable: true)]
     #[Groups(['product:read', 'order:item'])] // Important pour que l'API renvoie le nom de l'image
@@ -97,15 +99,18 @@ php bin/console make:migration
 php bin/console doctrine:migrations:migrate
 ```
 
-### Créer un DTO pour l'upload 
+### Créer un DTO pour l'upload
+
 Puisque nous utilisons la validation automatique et le mapping de Symfony (MapRequestPayload), mais que notre entité ne peut pas recevoir directement un fichier (elle attend une string), nous allons créer un DTO.
 
 Pré-requis : Pour que la validation des fichiers fonctionne (#[Assert\File]), vous devez installer le composant Mime :
+
 ```Bash
 composer require symfony/mime
 ```
 
 Créez le fichier `src/Dto/ProductCreateDto.php` :
+
 ```php
 <?php
 namespace App\Dto;
@@ -136,37 +141,41 @@ class ProductCreateDto
 ```
 
 ### Mettre à jour le contrôleur
+
 Maintenant, nous pouvons adapter le ProductController.
 
 Attention technique : Le Serializer de Symfony est très fort pour le JSON, mais il ne sait pas toujours faire le lien automatique entre un champ de formulaire (fichier) et une propriété de DTO en `multipart/form-data`. Nous devons donc injecter l'objet Request pour récupérer le fichier manuellement et le donner au DTO.
 
 Modifiez la méthode `create dans le contrôleur Product :
+
 ```php
-#[Route('', name: 'create', methods: ['POST'])]
+ #[Route('', name: 'create', methods: ['POST'])]
     #[IsGranted('ROLE_ADMIN')]
     public function create(
-        #[MapRequestPayload] ProductCreateDto $dto,
-        Request $request, // <--- Indispensable pour récupérer le fichier binaire
+        Request $request,
         EntityManagerInterface $entityManager,
-        FileUploader $fileUploader
+        FileUploader $fileUploader,
+        ValidatorInterface $validator
     ): JsonResponse {
-        
-        // Le Serializer ne le fait pas toujours automatiquement avec le multipart/form-data
-        // On force l'injection du fichier dans le DTO
-        $imageFile = $request->files->get('image');
-        if ($imageFile) {
-            $dto->image = $imageFile;
+
+        $dto = new ProductCreateDto();
+        $dto->name = $request->request->get('name');
+        $dto->price = (float) $request->request->get('price');
+        $dto->description = $request->request->get('description');
+        $dto->image = $request->files->get('image');
+
+        $errors = $validator->validate($dto);
+
+        if (count($errors) > 0) {
+            return $this->json($errors, Response::HTTP_BAD_REQUEST);
         }
 
-        // Création de l'entité et transfert des données
-        $product = new Product();
+       $product = new Product();
         $product->setName($dto->name);
         $product->setPrice($dto->price);
         $product->setDescription($dto->description);
 
-        // Gestion de l'upload via le service
         if ($dto->image) {
-            // Le service gère le renommage et le déplacement
             $filename = $fileUploader->upload($dto->image);
             $product->setImage($filename);
         }
@@ -191,14 +200,15 @@ URL : http://127.0.0.1:8000/product
 Onglet : Allez dans Body.
 Type : Sélectionnez form-data (et non raw ou x-www-form-urlencoded).
 
-| Clé (Key) | Valeur (Value) | Type (Menu déroulant) |
-| :--- | :--- | :--- |
-| `name` | iPhone 15 | Text |
-| `price` | 999 | Text |
-| `description` | Super téléphone | Text |
-| **`image`** | *(Sélectionnez votre fichier)* | **File** |
+| Clé (Key)     | Valeur (Value)                 | Type (Menu déroulant) |
+| :------------ | :----------------------------- | :-------------------- |
+| `name`        | iPhone 15                      | Text                  |
+| `price`       | 999                            | Text                  |
+| `description` | Super téléphone                | Text                  |
+| **`image`**   | _(Sélectionnez votre fichier)_ | **File**              |
 
 Si tout est correct, l’API renvoie un statut 201 Created avec le JSON suivant :
+
 ```JSON
 {
     "message": "Produit créé avec succès",
@@ -206,7 +216,6 @@ Si tout est correct, l’API renvoie un statut 201 Created avec le JSON suivant 
     "image": "iphone-15-65a4b2c1.jpg"
 }
 ```
-
 
 ### Exercice, modification de la méthode update()
 
@@ -224,7 +233,7 @@ Si tout est correct, l’API renvoie un statut 201 Created avec le JSON suivant 
 
         $imageFile = $request->files->get('image');
         $jsonData = $request->request->get('data');
-        
+
         if ($jsonData) {
             $serializer->deserialize(
                 $jsonData,

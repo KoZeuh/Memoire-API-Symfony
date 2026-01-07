@@ -48,30 +48,37 @@ final class ProductController extends AbstractController
     #[Route('', name: 'create', methods: ['POST'])]
     #[IsGranted('ROLE_ADMIN')]
     public function create(
-        #[MapRequestPayload] ProductCreateDto $dto,
         Request $request,
         EntityManagerInterface $entityManager,
-        FileUploader $fileUploader
+        FileUploader $fileUploader,
+        ValidatorInterface $validator
     ): JsonResponse {
 
-        $imageFile = $request->files->get('image');
-        if ($imageFile) {
-            $dto->image = $imageFile;
+        $dto = new ProductCreateDto();
+        $dto->name = $request->request->get('name');
+        $dto->price = (float) $request->request->get('price'); 
+        $dto->description = $request->request->get('description');
+        $dto->image = $request->files->get('image'); 
+
+        $errors = $validator->validate($dto);
+
+        if (count($errors) > 0) {
+            return $this->json($errors, Response::HTTP_BAD_REQUEST);
         }
 
-        $product = new Product();
+       $product = new Product();
         $product->setName($dto->name);
         $product->setPrice($dto->price);
         $product->setDescription($dto->description);
 
-         if ($dto->image) {
+        if ($dto->image) {
             $filename = $fileUploader->upload($dto->image);
             $product->setImage($filename);
         }
 
         $entityManager->persist($product);
         $entityManager->flush();
-
+        
         return $this->json([
             'message' => 'Produit créé avec succès',
             'id' => $product->getId(),
