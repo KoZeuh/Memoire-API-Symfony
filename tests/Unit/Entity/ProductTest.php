@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 
 class ProductTest extends TestCase
 {
-    public function testApplyTax(): void
+    public function testGettersAndSetters(): void
     {
         $product = new Product();
         $product->setName('name');
