@@ -4,7 +4,8 @@ services:
     container_name: symfony_php
     environment:
       APP_ENV: prod
-      DATABASE_URL: "mysql://symfony:symfony@db:3306/symfony?serverVersion=8.0"
+      APP_SECRET: ${APP_SECRET}
+      DATABASE_URL: ${DATABASE_URL}
     volumes:
       - .:/app
     depends_on:
@@ -25,10 +26,10 @@ services:
     image: mysql:8.0
     container_name: symfony_db
     environment:
-      MYSQL_DATABASE: symfony
-      MYSQL_USER: symfony
-      MYSQL_PASSWORD: symfony
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
     restart: always

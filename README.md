@@ -1,260 +1,158 @@
 Voici la correction de l'exercice sur la mise en place des gestions de fichiers. (Chapitre 3 - Partie 3)
 
 
-## Déclarer un dossier d'upload
-Avant de pouvoir stocker un fichier, Symfony doit savoir où le placer. Dans `config/services.yaml, on ajoute un paramètre global qui représente le chemin vers le dossier public des uploads.
-```yaml
-parameters:
-    upload_directory: '%kernel.project_dir%/public/uploads'
+### Dockerfile php
+Créer un fichier Dockerfile à la racine du projet
+```Dockerfile
+FROM php:8.3-fpm AS build
+
+RUN apt-get update && apt-get install -y \
+git unzip libicu-dev libpq-dev \
+&& docker-php-ext-install intl pdo pdo_mysql
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+
+RUN composer install \
+--no-dev \
+--optimize-autoloader \
+--no-interaction \
+--no-scripts
+
+COPY . .
+
+RUN mkdir -p var/cache var/log \
+&& chown -R www-data:www-data var
+
+FROM php:8.3-fpm
+
+RUN apt-get update && apt-get install -y \
+libicu-dev libpq-dev \
+&& docker-php-ext-install intl pdo pdo_mysql
+
+WORKDIR /app
+
+COPY --from=build /app /app
+
+RUN chown -R www-data:www-data /app/var
+
+CMD ["php-fpm"]
 ```
 
-### Créer le service FileUploader
+### Fichier de conf Nginx
 
-Plutôt que d’écrire la logique dans le contrôleur, on crée un service. Nous allons utiliser le `SluggerInterface` de Symfony pour nettoyer le nom du fichier, c'est une sécurité indispensable. 
+Créez le fichier : `docker/nginx/default.conf`
 
-Créez le fichier : `src/Service/FileUploader.php`
+```
+server {
+    listen 80;
+    server_name example.com;
 
-```php
-<?php
+    root /app/public;
+    index index.php;
 
-namespace App\Service;
+    # Empêche l'affichage de la version Nginx
+    server_tokens off;
 
-use Symfony\Component\HttpFoundation\File\Exception\FileException;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
-use Symfony\Component\String\Slugger\SluggerInterface;
+    # Limite la taille des uploads
+    client_max_body_size 10M;
 
-class FileUploader
-{
-    // On injecte le dossier cible et le Slugger (outil de nettoyage de texte)
-    public function __construct(
-        private string $targetDirectory,
-        private SluggerInterface $slugger
-    ) {
+    # Sécurité : headers HTTP
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Content-Security-Policy "default-src 'self'" always;
+
+    # Accès principal Symfony
+    location / {
+        try_files $uri /index.php$is_args$args;
     }
 
-    public function upload(UploadedFile $file): string
-    {
-        // Récupérer le nom de fichier original (sans l'extension)
-        $originalFilename = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        
-        // Sécuriser le nom (suppression des accents, espaces, caractères spéciaux)
-        $safeFilename = $this->slugger->slug($originalFilename);
-        
-        // Générer un nom unique pour éviter d'écraser un fichier existant
-        $fileName = $safeFilename.'-'.uniqid().'.'.$file->guessExtension();
-
-        // Déplacement du fichier
-        try {
-            $file->move($this->targetDirectory, $fileName);
-        } catch (FileException $e) {
-            // Si le dossier n'existe pas ou n'est pas accessible
-            throw new \RuntimeException("Erreur lors de l'upload du fichier");
+    # Bloque l'accès direct à d'autres fichiers PHP
+    location ~ \.php$ {
+        if ($uri != "/index.php") {
+            return 404;
         }
 
-        return $fileName; // On retourne juste le nom 
+        fastcgi_pass php:9000;
+        include fastcgi_params;
+
+        fastcgi_param SCRIPT_FILENAME /app/public$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT /app/public;
+
+        fastcgi_intercept_errors on;
     }
+
+    # Cache des fichiers statiques
+    location ~* \.(css|js|jpg|jpeg|png|gif|ico|svg|woff2?)$ {
+        expires 30d;
+        access_log off;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Protection des fichiers sensibles
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    # Désactive l'accès aux fichiers de config
+    location ~* \.(env|log|yml|yaml|ini)$ {
+        deny all;
+    }
+
+    # Gzip pour prod
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json application/xml text/xml application/xml+rss text/javascript;
 }
 ```
 
-Ensuite, on configure ce service dans config/services.yaml pour lui passer le dossier d'upload défini à l'étape 1 :
+### compose.yaml
 ```yaml
-# config/services.yaml
 services:
-    # ...
-    
-    # Injection de l'argument $targetDirectory dans notre service
-    App\Service\FileUploader:
-        arguments:
-            $targetDirectory: '%upload_directory%'
+    php:
+        build: .
+        container_name: symfony_php
+        environment:
+            APP_ENV: prod
+            APP_SECRET: ${APP_SECRET}
+            DATABASE_URL: ${DATABASE_URL}
+        volumes:
+            - .:/app
+        depends_on:
+            - db
+
+    nginx:
+        image: nginx:alpine
+        container_name: symfony_nginx
+        ports:
+            - "8080:80"
+        volumes:
+            - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+            - .:/app:ro
+        depends_on:
+            - php
+
+    db:
+        image: mysql:8.0
+        container_name: symfony_db
+        environment:
+            MYSQL_DATABASE: ${DB_NAME}
+            MYSQL_USER: ${DB_USER}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+            MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+        volumes:
+            - db_data:/var/lib/mysql
+        restart: always
+
+volumes:
+    db_data:
 ```
 
-
-### Mettre à jour l'entité Product
-```php
-#[ORM\Column(length: 255, nullable: true)]
-    #[Groups(['product:read', 'order:item'])] // Important pour que l'API renvoie le nom de l'image
-    private ?string $image = null;
-
-    // ... getters et setters ...
-
-    public function getImage(): ?string
-    {
-        return $this->image;
-    }
-
-    public function setImage(?string $image): static
-    {
-        $this->image = $image;
-
-        return $this;
-    }
-```
-
-### Mettre à jour la base de données
-
-```Bash
-php bin/console make:migration
-php bin/console doctrine:migrations:migrate
-```
-
-### Créer un DTO pour l'upload 
-Puisque nous utilisons la validation automatique et le mapping de Symfony (MapRequestPayload), mais que notre entité ne peut pas recevoir directement un fichier (elle attend une string), nous allons créer un DTO.
-
-Pré-requis : Pour que la validation des fichiers fonctionne (#[Assert\File]), vous devez installer le composant Mime :
-```Bash
-composer require symfony/mime
-```
-
-Créez le fichier `src/Dto/ProductCreateDto.php` :
-```php
-<?php
-namespace App\Dto;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
-use Symfony\Component\Validator\Constraints as Assert;
-
-class ProductCreateDto
-{
-    #[Assert\NotBlank(message: "Le nom est obligatoire")]
-    #[Assert\Length(min: 3, minMessage: "Le nom doit faire au moins 3 caractères")]
-    public ?string $name = null;
-
-    #[Assert\NotNull(message: "Le prix est obligatoire")]
-    #[Assert\Positive(message: "Le prix doit être positif")]
-    public ?float $price = null;
-
-    #[Assert\NotBlank(message: "La description est obligatoire")]
-    public ?string $description = null;
-
-    // C'est ici que la magie opère : on autorise un objet UploadedFile
-    #[Assert\File(
-        maxSize: "2M",
-        mimeTypes: ["image/jpeg", "image/png", "image/webp"],
-        mimeTypesMessage: "Veuillez uploader une image valide (JPG, PNG ou WEBP)"
-    )]
-    public ?UploadedFile $image = null;
-}
-```
-
-### Mettre à jour le contrôleur
-Maintenant, nous pouvons adapter le ProductController.
-
-Attention technique : Le Serializer de Symfony est très fort pour le JSON, mais il ne sait pas toujours faire le lien automatique entre un champ de formulaire (fichier) et une propriété de DTO en `multipart/form-data`. Nous devons donc injecter l'objet Request pour récupérer le fichier manuellement et le donner au DTO.
-
-Modifiez la méthode `create dans le contrôleur Product :
-```php
-#[Route('', name: 'create', methods: ['POST'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function create(
-        #[MapRequestPayload] ProductCreateDto $dto,
-        Request $request, // <--- Indispensable pour récupérer le fichier binaire
-        EntityManagerInterface $entityManager,
-        FileUploader $fileUploader
-    ): JsonResponse {
-        
-        // Le Serializer ne le fait pas toujours automatiquement avec le multipart/form-data
-        // On force l'injection du fichier dans le DTO
-        $imageFile = $request->files->get('image');
-        if ($imageFile) {
-            $dto->image = $imageFile;
-        }
-
-        // Création de l'entité et transfert des données
-        $product = new Product();
-        $product->setName($dto->name);
-        $product->setPrice($dto->price);
-        $product->setDescription($dto->description);
-
-        // Gestion de l'upload via le service
-        if ($dto->image) {
-            // Le service gère le renommage et le déplacement
-            $filename = $fileUploader->upload($dto->image);
-            $product->setImage($filename);
-        }
-
-        $entityManager->persist($product);
-        $entityManager->flush();
-
-        return $this->json([
-            'message' => 'Produit créé avec succès',
-            'id' => $product->getId(),
-            'image' => $product->getImage()
-        ], Response::HTTP_CREATED);
-    }
-```
-
-### Tester l'upload avec Postman
-
-Pour tester cet upload, une simple requête JSON ne suffit pas. Le protocole HTTP nécessite d'utiliser le format multipart/form-data pour envoyer des fichiers binaires.
-Voici la configuration exacte à reproduire dans Postman :
-Méthode : POST
-URL : http://127.0.0.1:8000/product
-Onglet : Allez dans Body.
-Type : Sélectionnez form-data (et non raw ou x-www-form-urlencoded).
-
-| Clé (Key) | Valeur (Value) | Type (Menu déroulant) |
-| :--- | :--- | :--- |
-| `name` | iPhone 15 | Text |
-| `price` | 999 | Text |
-| `description` | Super téléphone | Text |
-| **`image`** | *(Sélectionnez votre fichier)* | **File** |
-
-Si tout est correct, l’API renvoie un statut 201 Created avec le JSON suivant :
-```JSON
-{
-    "message": "Produit créé avec succès",
-    "id": 23,
-    "image": "iphone-15-65a4b2c1.jpg"
-}
-```
-
-
-### Exercice, modification de la méthode update()
-
-```php
-    #[Route('/{id}', name: 'update', methods: ['PUT', 'POST'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function update(
-        Product $product,
-        Request $request,
-        SerializerInterface $serializer,
-        EntityManagerInterface $entityManager,
-        ValidatorInterface $validator,
-        FileUploader $fileUploader
-    ): JsonResponse {
-
-        $imageFile = $request->files->get('image');
-        $jsonData = $request->request->get('data');
-        
-        if ($jsonData) {
-            $serializer->deserialize(
-                $jsonData,
-                Product::class,
-                'json',
-                ['object_to_populate' => $product]
-            );
-        }
-
-        if ($imageFile) {
-            $filename = $fileUploader->upload($imageFile);
-            $product->setImage($filename);
-        }
-
-        $errors = $validator->validate($product);
-
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Produit mis à jour avec succès'], Response::HTTP_OK);
-    }
+### Lancer l'application
+```shell
+docker compose up -d --build
 ```
