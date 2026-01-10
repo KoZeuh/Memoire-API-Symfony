@@ -1,260 +1,158 @@
-Voici la correction de l'exercice sur la mise en place des gestions de fichiers. (Chapitre 3 - Partie 3)
+Voici la correction de l'exercice sur la mise en place des tests automatisées. (Chapitre 3 - Partie 3)
 
 
-## Déclarer un dossier d'upload
-Avant de pouvoir stocker un fichier, Symfony doit savoir où le placer. Dans `config/services.yaml, on ajoute un paramètre global qui représente le chemin vers le dossier public des uploads.
-```yaml
-parameters:
-    upload_directory: '%kernel.project_dir%/public/uploads'
+## Ajout du bundle phpunit
+
+```shell
+composer require --dev phpunit/phpunit
 ```
 
-### Créer le service FileUploader
+### Ajout d'un test unitaire
 
-Plutôt que d’écrire la logique dans le contrôleur, on crée un service. Nous allons utiliser le `SluggerInterface` de Symfony pour nettoyer le nom du fichier, c'est une sécurité indispensable. 
-
-Créez le fichier : `src/Service/FileUploader.php`
+Créez le fichier : `tests/Unit/Entity/ProductTest.php`
 
 ```php
 <?php
 
-namespace App\Service;
+namespace App\Tests\Unit\Entity;
 
-use Symfony\Component\HttpFoundation\File\Exception\FileException;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
-use Symfony\Component\String\Slugger\SluggerInterface;
+use App\Entity\Category;
+use App\Entity\OrderProduct;
+use App\Entity\Product;
+use PHPUnit\Framework\TestCase;
 
-class FileUploader
+class ProductTest extends TestCase
 {
-    // On injecte le dossier cible et le Slugger (outil de nettoyage de texte)
-    public function __construct(
-        private string $targetDirectory,
-        private SluggerInterface $slugger
-    ) {
-    }
-
-    public function upload(UploadedFile $file): string
+    public function testGettersAndSetters(): void
     {
-        // Récupérer le nom de fichier original (sans l'extension)
-        $originalFilename = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        
-        // Sécuriser le nom (suppression des accents, espaces, caractères spéciaux)
-        $safeFilename = $this->slugger->slug($originalFilename);
-        
-        // Générer un nom unique pour éviter d'écraser un fichier existant
-        $fileName = $safeFilename.'-'.uniqid().'.'.$file->guessExtension();
-
-        // Déplacement du fichier
-        try {
-            $file->move($this->targetDirectory, $fileName);
-        } catch (FileException $e) {
-            // Si le dossier n'existe pas ou n'est pas accessible
-            throw new \RuntimeException("Erreur lors de l'upload du fichier");
-        }
-
-        return $fileName; // On retourne juste le nom 
-    }
-}
-```
-
-Ensuite, on configure ce service dans config/services.yaml pour lui passer le dossier d'upload défini à l'étape 1 :
-```yaml
-# config/services.yaml
-services:
-    # ...
-    
-    # Injection de l'argument $targetDirectory dans notre service
-    App\Service\FileUploader:
-        arguments:
-            $targetDirectory: '%upload_directory%'
-```
-
-
-### Mettre à jour l'entité Product
-```php
-#[ORM\Column(length: 255, nullable: true)]
-    #[Groups(['product:read', 'order:item'])] // Important pour que l'API renvoie le nom de l'image
-    private ?string $image = null;
-
-    // ... getters et setters ...
-
-    public function getImage(): ?string
-    {
-        return $this->image;
-    }
-
-    public function setImage(?string $image): static
-    {
-        $this->image = $image;
-
-        return $this;
-    }
-```
-
-### Mettre à jour la base de données
-
-```Bash
-php bin/console make:migration
-php bin/console doctrine:migrations:migrate
-```
-
-### Créer un DTO pour l'upload 
-Puisque nous utilisons la validation automatique et le mapping de Symfony (MapRequestPayload), mais que notre entité ne peut pas recevoir directement un fichier (elle attend une string), nous allons créer un DTO.
-
-Pré-requis : Pour que la validation des fichiers fonctionne (#[Assert\File]), vous devez installer le composant Mime :
-```Bash
-composer require symfony/mime
-```
-
-Créez le fichier `src/Dto/ProductCreateDto.php` :
-```php
-<?php
-namespace App\Dto;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
-use Symfony\Component\Validator\Constraints as Assert;
-
-class ProductCreateDto
-{
-    #[Assert\NotBlank(message: "Le nom est obligatoire")]
-    #[Assert\Length(min: 3, minMessage: "Le nom doit faire au moins 3 caractères")]
-    public ?string $name = null;
-
-    #[Assert\NotNull(message: "Le prix est obligatoire")]
-    #[Assert\Positive(message: "Le prix doit être positif")]
-    public ?float $price = null;
-
-    #[Assert\NotBlank(message: "La description est obligatoire")]
-    public ?string $description = null;
-
-    // C'est ici que la magie opère : on autorise un objet UploadedFile
-    #[Assert\File(
-        maxSize: "2M",
-        mimeTypes: ["image/jpeg", "image/png", "image/webp"],
-        mimeTypesMessage: "Veuillez uploader une image valide (JPG, PNG ou WEBP)"
-    )]
-    public ?UploadedFile $image = null;
-}
-```
-
-### Mettre à jour le contrôleur
-Maintenant, nous pouvons adapter le ProductController.
-
-Attention technique : Le Serializer de Symfony est très fort pour le JSON, mais il ne sait pas toujours faire le lien automatique entre un champ de formulaire (fichier) et une propriété de DTO en `multipart/form-data`. Nous devons donc injecter l'objet Request pour récupérer le fichier manuellement et le donner au DTO.
-
-Modifiez la méthode `create dans le contrôleur Product :
-```php
-#[Route('', name: 'create', methods: ['POST'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function create(
-        #[MapRequestPayload] ProductCreateDto $dto,
-        Request $request, // <--- Indispensable pour récupérer le fichier binaire
-        EntityManagerInterface $entityManager,
-        FileUploader $fileUploader
-    ): JsonResponse {
-        
-        // Le Serializer ne le fait pas toujours automatiquement avec le multipart/form-data
-        // On force l'injection du fichier dans le DTO
-        $imageFile = $request->files->get('image');
-        if ($imageFile) {
-            $dto->image = $imageFile;
-        }
-
-        // Création de l'entité et transfert des données
         $product = new Product();
-        $product->setName($dto->name);
-        $product->setPrice($dto->price);
-        $product->setDescription($dto->description);
+        $product->setName('name');
+        $product->setDescription('description');
+        $product->setPrice(100);
+        $product->setCode('code');
+        $product->setImage('image.jpg');
 
-        // Gestion de l'upload via le service
-        if ($dto->image) {
-            // Le service gère le renommage et le déplacement
-            $filename = $fileUploader->upload($dto->image);
-            $product->setImage($filename);
-        }
+        $category = new Category();
+        $product->setCategory($category);
 
-        $entityManager->persist($product);
-        $entityManager->flush();
+        $orderProduct = new OrderProduct();
+        $product->addOrderProduct($orderProduct);
 
-        return $this->json([
-            'message' => 'Produit créé avec succès',
-            'id' => $product->getId(),
-            'image' => $product->getImage()
-        ], Response::HTTP_CREATED);
+        $this->assertEquals('name', $product->getName());
+        $this->assertEquals('description', $product->getDescription());
+        $this->assertEquals(100, $product->getPrice());
+        $this->assertEquals('code', $product->getCode());
+        $this->assertEquals('image.jpg', $product->getImage());
+        $this->assertSame($category, $product->getCategory());
+        $this->assertContains($orderProduct, $product->getOrderProducts());
+
+        $product->removeOrderProduct($orderProduct);
+
+        $this->assertNotContains($orderProduct, $product->getOrderProducts());
     }
-```
-
-### Tester l'upload avec Postman
-
-Pour tester cet upload, une simple requête JSON ne suffit pas. Le protocole HTTP nécessite d'utiliser le format multipart/form-data pour envoyer des fichiers binaires.
-Voici la configuration exacte à reproduire dans Postman :
-Méthode : POST
-URL : http://127.0.0.1:8000/product
-Onglet : Allez dans Body.
-Type : Sélectionnez form-data (et non raw ou x-www-form-urlencoded).
-
-| Clé (Key) | Valeur (Value) | Type (Menu déroulant) |
-| :--- | :--- | :--- |
-| `name` | iPhone 15 | Text |
-| `price` | 999 | Text |
-| `description` | Super téléphone | Text |
-| **`image`** | *(Sélectionnez votre fichier)* | **File** |
-
-Si tout est correct, l’API renvoie un statut 201 Created avec le JSON suivant :
-```JSON
-{
-    "message": "Produit créé avec succès",
-    "id": 23,
-    "image": "iphone-15-65a4b2c1.jpg"
 }
 ```
 
-
-### Exercice, modification de la méthode update()
+### Ajout d'un test fonctionnel
+Création d'un endpoint /ping à tester
 
 ```php
-    #[Route('/{id}', name: 'update', methods: ['PUT', 'POST'])]
-    #[IsGranted('ROLE_ADMIN')]
-    public function update(
-        Product $product,
-        Request $request,
-        SerializerInterface $serializer,
-        EntityManagerInterface $entityManager,
-        ValidatorInterface $validator,
-        FileUploader $fileUploader
-    ): JsonResponse {
+<?php
 
-        $imageFile = $request->files->get('image');
-        $jsonData = $request->request->get('data');
-        
-        if ($jsonData) {
-            $serializer->deserialize(
-                $jsonData,
-                Product::class,
-                'json',
-                ['object_to_populate' => $product]
-            );
-        }
+namespace App\Controller;
 
-        if ($imageFile) {
-            $filename = $fileUploader->upload($imageFile);
-            $product->setImage($filename);
-        }
+use App\Entity\Product;
+use App\Repository\ProductRepository;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
+use Symfony\Component\Serializer\SerializerInterface;
+use App\Dto\ProductCreateDto;
+use App\Service\FileUploader;
+use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 
-        $errors = $validator->validate($product);
+#[Route('/ping', name: 'app_ping_')]
+final class PingController extends AbstractController
+{
+    #[Route('', name: 'ping', methods: ['GET'])]
+    public function list(ProductRepository $productRepository): JsonResponse
+    {
+        $response = new JsonResponse();
+        $response->setStatusCode(Response::HTTP_OK);
+        $response->setContent(json_encode([
+            'ping' => 'pong'
+        ]));
 
-        if (count($errors) > 0) {
-            $errorMessages = [];
-            foreach ($errors as $error) {
-                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
-            }
-
-            return $this->json([
-                'error' => 'Validation échouée',
-                'violations' => $errorMessages
-            ], Response::HTTP_BAD_REQUEST);
-        }
-
-        $entityManager->flush();
-
-        return $this->json(['message' => 'Produit mis à jour avec succès'], Response::HTTP_OK);
+        return $response;
     }
+}
 ```
+
+Créez le fichier : `tests/PingApiTest.php`
+
+```php
+<?php
+
+namespace App\Tests\Functional;
+
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class PingApiTest extends WebTestCase
+{
+    public function testGetProducts(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/ping');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertJson($client->getResponse()->getContent());
+
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertIsArray($data);
+    }
+}
+```
+
+### Lancement des tests en local
+
+```shell
+php bin/phpunit
+```
+
+### Lancement des tests dans un CI/CD
+
+Création du fichier .github/workflows/tests.yml
+
+```yaml
+name: Run API tests
+
+on:
+    push:
+    pull_request:
+
+jobs:
+    tests:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.3'
+                  extensions: mbstring, intl, pdo_mysql
+
+            - name: Install dependencies
+              run: composer install --prefer-dist
+
+            - name: Run tests
+              run: php bin/phpunit
+```
+à chaque push ou pull request, les tests seront exécutés
